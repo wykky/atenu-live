@@ -200,5 +200,13 @@ run_node \
   --think 8 --answer 10 \
   --description "Thirty questions on the capitals and historic cities of West Africa: Cotonou and Abomey, Yamoussoukro and Grand-Bassam, Zinder and Agadez, Bolama and Bissau, Banjul once Bathurst, Praia and Mindelo in Cabo Verde, Saint-Louis and Dakar, Timbuktu, Gao and Djenne in Mali, Kumasi and Cape Coast in Ghana, Abeokuta, Lokoja and Kano in Nigeria, and the founding of Monrovia, Freetown and Conakry. Written in simple English for high-school students."
 
+run_node \
+  --tsv "$(tsv_path east-african-countries.tsv)" \
+  --slug east-african-countries \
+  --title "East African Countries" \
+  --subject Geography --language en \
+  --think 8 --answer 10 \
+  --description "Thirty questions on the countries of East Africa: the East African Community and its eight Partner States, the union of Tanganyika and Zanzibar, Burundi's capital Gitega and the independence of South Sudan, the Battle of Adwa and the Aksumite port of Adulis, Kilimanjaro, Mount Kenya and the Rwenzori, Lakes Tana, Victoria, Turkana and Assal, and the World Heritage sites at Lalibela, Harar Jugol, Zanzibar's Stone Town, Kilwa Kisiwani, Lamu and Konso. Written in simple English for high-school students."
+
 echo
 echo "✓ Library seeded. Visit https://live.atenu.org/library to verify."
