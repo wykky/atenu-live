@@ -208,5 +208,13 @@ run_node \
   --think 8 --answer 10 \
   --description "Thirty questions on the countries of East Africa: the East African Community and its eight Partner States, the union of Tanganyika and Zanzibar, Burundi's capital Gitega and the independence of South Sudan, the Battle of Adwa and the Aksumite port of Adulis, Kilimanjaro, Mount Kenya and the Rwenzori, Lakes Tana, Victoria, Turkana and Assal, and the World Heritage sites at Lalibela, Harar Jugol, Zanzibar's Stone Town, Kilwa Kisiwani, Lamu and Konso. Written in simple English for high-school students."
 
+run_node \
+  --tsv "$(tsv_path southern-african-countries.tsv)" \
+  --slug southern-african-countries \
+  --title "Southern African Countries" \
+  --subject Geography --language en \
+  --think 8 --answer 10 \
+  --description "Thirty questions on Southern Africa: the Okavango Delta and Fish River Canyon, Great Zimbabwe and Mapungubwe, Moshoeshoe I and the Basotho blanket, the independence of Zambia, Malawi, Botswana and Mozambique, Mandela, Kaunda, Seretse Khama and Samora Machel, the Umhlanga, Victoria Falls and the twelve official languages of South Africa. Written in simple English for high-school students."
+
 echo
 echo "✓ Library seeded. Visit https://live.atenu.org/library to verify."
