@@ -216,5 +216,13 @@ run_node \
   --think 8 --answer 10 \
   --description "Thirty questions on Southern Africa: the Okavango Delta and Fish River Canyon, Great Zimbabwe and Mapungubwe, Moshoeshoe I and the Basotho blanket, the independence of Zambia, Malawi, Botswana and Mozambique, Mandela, Kaunda, Seretse Khama and Samora Machel, the Umhlanga, Victoria Falls and the twelve official languages of South Africa. Written in simple English for high-school students."
 
+run_node \
+  --tsv "$(tsv_path north-african-countries.tsv)" \
+  --slug north-african-countries \
+  --title "North African Countries" \
+  --subject Geography --language en \
+  --think 8 --answer 10 \
+  --description "Thirty hard questions on North Africa: Carthage, Leptis Magna and Timgad, the pyramids of Sudan and the meeting of the Niles at Khartoum, Mount Toubkal and the Qattara Depression, Al-Qarawiyyin and Fatima al-Fihri, the Suez Canal, Abu Simbel and Lake Nasser, Queen Dihya, Algerian independence, the Arab Spring, Naguib Mahfouz and Morocco's 2022 World Cup run. Written in simple English for high-school students."
+
 echo
 echo "✓ Library seeded. Visit https://live.atenu.org/library to verify."
