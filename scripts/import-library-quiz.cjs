@@ -27,6 +27,54 @@ const Database = require('better-sqlite3');
 
 const DB_PATH = process.env.ATENU_DB_PATH || '/app/data/atenu.db';
 
+// Mirror of src/lib/game/validators.ts LIMITS — the same caps the live createGame path
+// enforces. Kept in sync by hand because this file must run with plain `node` in the
+// container (no TS, no path aliases). If you change validators.ts, change this too.
+const LIMITS = {
+  QUESTION_TEXT_MAX: 1000,
+  OPTION_TEXT_MAX: 300,
+  EXPLANATION_MAX: 2000,
+  IMAGE_URL_MAX: 2048,
+  TIME_MIN: 3,
+  TIME_MAX: 120,
+};
+
+/**
+ * Validate every data row against LIMITS. Returns a list of "row N: problem" strings;
+ * empty means the file is importable. `rowNo` is the 1-based line number in the TSV
+ * (header = line 1) so the message points at the line to fix.
+ */
+function validateRows(rows) {
+  const problems = [];
+  rows.forEach((r) => {
+    const where = `row ${r.__line}`;
+    if (!r.question) problems.push(`${where}: empty question`);
+    else if (r.question.length > LIMITS.QUESTION_TEXT_MAX) problems.push(`${where}: question longer than ${LIMITS.QUESTION_TEXT_MAX} chars`);
+    for (const col of ['correct', 'wrong1', 'wrong2', 'wrong3']) {
+      const v = r[col] ?? '';
+      if (!v) problems.push(`${where}: empty ${col}`);
+      else if (v.length > LIMITS.OPTION_TEXT_MAX) problems.push(`${where}: ${col} longer than ${LIMITS.OPTION_TEXT_MAX} chars`);
+    }
+    const opts = [r.correct, r.wrong1, r.wrong2, r.wrong3].filter(Boolean);
+    if (new Set(opts).size !== opts.length) problems.push(`${where}: duplicate option text`);
+    if (r.explanation && r.explanation.length > LIMITS.EXPLANATION_MAX) {
+      problems.push(`${where}: explanation longer than ${LIMITS.EXPLANATION_MAX} chars`);
+    }
+    if (r.time) {
+      const t = Number(r.time);
+      if (!Number.isInteger(t) || t < LIMITS.TIME_MIN || t > LIMITS.TIME_MAX) {
+        problems.push(`${where}: time must be an integer ${LIMITS.TIME_MIN}..${LIMITS.TIME_MAX} (got "${r.time}")`);
+      }
+    }
+    if (r.image) {
+      if (r.image.length > LIMITS.IMAGE_URL_MAX || !/^https?:\/\//i.test(r.image)) {
+        problems.push(`${where}: image must be an http(s) URL up to ${LIMITS.IMAGE_URL_MAX} chars`);
+      }
+    }
+  });
+  return problems;
+}
+
 function parseTsv(content) {
   const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length < 2) {
@@ -41,11 +89,12 @@ function parseTsv(content) {
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
     const cells = lines[i].split('\t');
-    const row = {};
+    const row = { __line: i + 1 };
     header.forEach((col, j) => {
       row[col] = (cells[j] ?? '').trim();
     });
-    if (!row.question || !row.correct) continue;
+    // Rows with an empty question/correct used to be skipped silently, which hid
+    // off-by-one column mistakes. validateRows() reports them instead.
     rows.push(row);
   }
   return rows;
@@ -135,9 +184,21 @@ function main() {
     console.error('No data rows in TSV.');
     process.exit(1);
   }
+  const problems = validateRows(rows);
+  if (problems.length > 0) {
+    console.error(`Refusing to import ${values.tsv}: ${problems.length} problem(s)`);
+    problems.forEach((p) => console.error('  - ' + p));
+    process.exit(1);
+  }
 
   const thinkTime = values.think ? parseInt(values.think, 10) : 5;
   const defaultAnswer = values.answer ? parseInt(values.answer, 10) : 20;
+  for (const [label, v] of [['--think', thinkTime], ['--answer', defaultAnswer]]) {
+    if (!Number.isInteger(v) || v < LIMITS.TIME_MIN || v > LIMITS.TIME_MAX) {
+      console.error(`${label} must be an integer ${LIMITS.TIME_MIN}..${LIMITS.TIME_MAX}`);
+      process.exit(1);
+    }
+  }
   const shuffleFlag = values.shuffle === '1' ? 1 : 0;
 
   // Build canonical question objects. The correct answer is placed at an
