@@ -625,6 +625,32 @@ export class GameplayLoop {
         }
         break;
       }
+      case 'results': {
+        // A host who reloads here used to land on "Getting your results ready" with no
+        // button (hostResults is only emitted once, at phase entry) and was stuck until
+        // the grace timer ended the game. Re-send the stats / the player's own result.
+        if (!trusted) return;
+        const currentQuestion = this.questionManager.getCurrentQuestion(game);
+        if (!currentQuestion) return;
+        if (isHost) {
+          const stats = this.questionManager.getQuestionStats(game);
+          if (stats) this.io.to(socketId).emit('hostResults', stats);
+        } else {
+          const player = game.players.find((p) => p.socketId === socketId);
+          const result = player ? this.questionManager.getPersonalResults(game).get(player.id) : undefined;
+          if (player && result) {
+            const view = this.playerManager.getShuffledQuestionForPlayer(game, player, currentQuestion);
+            result.correctAnswer = view.correctAnswer;
+            if (view.correctAnswers) result.correctAnswers = view.correctAnswers;
+            // The player's results screen also needs the question text/options after a reload.
+            this.io.to(socketId).emit('thinkingPhase', this.playerManager.getQuestionForPlayer(game, player, currentQuestion), 0, {
+              serverNow: Date.now(), deadlineMs: Date.now(), qEpoch: game.qEpoch ?? 0, questionIndex: game.currentQuestionIndex,
+            });
+            this.io.to(socketId).emit('personalResult', result);
+          }
+        }
+        break;
+      }
       case 'leaderboard': {
         const leaderboard = this.playerManager.applyCompetitionRanks(this.playerManager.getLeaderboard(game));
         const gameLite = sanitizeGameForClient(game, { players: false });
@@ -642,7 +668,7 @@ export class GameplayLoop {
         this.io.to(socketId).emit('gameFinished', finalResults.map(toPublicPlayer));
         break;
       }
-      // waiting / preparation / results: nothing special to sync
+      // waiting / preparation: nothing special to sync
     }
   }
 }
