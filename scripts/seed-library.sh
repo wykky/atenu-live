@@ -47,7 +47,9 @@ run_node() {
 # /tmp/) so it sits next to node_modules and `require('better-sqlite3')` works.
 if [[ -n "$CONTAINER" ]]; then
   echo "→ Copying TSVs + import script into $CONTAINER ..."
-  docker exec "$CONTAINER" rm -rf /tmp/library-seed /app/import-library-quiz.cjs
+  # -u root: the container now runs as the unprivileged `node` user, and these paths
+  # were created root-owned by `docker cp` on a previous run.
+  docker exec -u root "$CONTAINER" rm -rf /tmp/library-seed /app/import-library-quiz.cjs
   docker cp "$SEED_DIR" "$CONTAINER:/tmp/library-seed"
   docker cp "$SCRIPT_DIR/import-library-quiz.cjs" "$CONTAINER:/app/import-library-quiz.cjs"
 fi

@@ -1,0 +1,17 @@
+# Never bake runtime state or secrets into the image.
+data
+data.bak*
+.env
+.env.*
+# Build output is produced inside the image; the host's copy (and its cache) is noise.
+.next
+node_modules
+.git
+.github
+.claude
+.DS_Store
+*.log
+tsconfig.tsbuildinfo
+# One-off host uploads live in quizzes/ root; only quizzes/library-seed ships (see Dockerfile).
+quizzes/*.tsv
+quizzes/*.csv
