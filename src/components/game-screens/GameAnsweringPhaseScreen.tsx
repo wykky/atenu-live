@@ -48,6 +48,8 @@ interface GameAnsweringPhaseScreenProps {
   onSubmitAnswer: (answer: number | number[]) => void;
   hasAnswered: boolean;
   questionIndex: number | null;
+  // Host only: live "N of M answered" progress (null for players / before first answer).
+  answeredCount?: { answered: number; total: number } | null;
 }
 
 export default function GameAnsweringPhaseScreen({
@@ -58,7 +60,8 @@ export default function GameAnsweringPhaseScreen({
   isPlayer,
   onSubmitAnswer,
   hasAnswered,
-  questionIndex
+  questionIndex,
+  answeredCount = null,
 }: GameAnsweringPhaseScreenProps) {
   const showOnPlayers = game?.settings.showQuestionOnPlayers ?? true;
 
@@ -98,6 +101,7 @@ export default function GameAnsweringPhaseScreen({
               currentQuestion={currentQuestion}
               timeLeft={timeLeft}
               answerTime={game?.settings.answerTime || 30}
+              answeredCount={answeredCount}
             />
           </div>
         )}

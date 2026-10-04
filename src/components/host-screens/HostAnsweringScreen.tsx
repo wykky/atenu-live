@@ -10,10 +10,12 @@ interface HostAnsweringScreenProps {
   currentQuestion: Question;
   timeLeft: number;
   answerTime: number;
+  answeredCount?: { answered: number; total: number } | null;
 }
 
 export default function HostAnsweringScreen({ 
-  currentQuestion 
+  currentQuestion,
+  answeredCount = null,
 }: HostAnsweringScreenProps) {
   const { playRandomCountdown, stopMusic } = useCountdownMusic();
 
@@ -71,8 +73,10 @@ export default function HostAnsweringScreen({
           </div>
         ))}
       </div>
-      <div className="text-center mt-2 sm:mt-3 text-gray-600 text-xs sm:text-sm shrink-0">
-        Players are choosing their answers on their devices
+      <div className="text-center mt-2 sm:mt-3 text-gray-600 text-xs sm:text-sm shrink-0" aria-live="polite">
+        {answeredCount
+          ? `${answeredCount.answered} of ${answeredCount.total} players have answered`
+          : 'Players are choosing their answers on their devices'}
       </div>
     </div>
   );

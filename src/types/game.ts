@@ -170,7 +170,8 @@ export interface ServerToClientEvents {
   playerLeft: (playerId: string) => void;
   playerDisconnected: (playerId: string) => void;
   error: (message: string) => void;
-  playerAnswered: (playerId: string) => void;
+  // Host socket only, throttled (<= 4/s): how many connected players have answered.
+  playerAnswered: (answeredCount: number, totalPlayers: number) => void;
   gameLogs: (tsvData: string, filename: string) => void;
   gameUpdated: (game: Game) => void;
   // Phase 2: emitted to late joiners during a live question (they shouldn't see the question)

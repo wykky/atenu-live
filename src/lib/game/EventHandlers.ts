@@ -554,7 +554,6 @@ export class EventHandlers {
       );
       if (success) {
         this.gameManager.markActive(game.id); // Phase 5: idle GC
-        this.io.to(game.id).emit('playerAnswered', player.id);
         this.gameplayLoop.onPlayerAnswered(game);
       }
     } catch (error) {

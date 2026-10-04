@@ -27,8 +27,15 @@ export const ANSWER_GRACE_MS = 1000;
 // TimerManager key prefix for the per-socket "resync to answering" follow-up emit.
 const RESYNC_TIMER_PREFIX = 'resyncAnswering_';
 
+// Host-only "N of M answered" progress: coalesce bursts to at most one emit per 250 ms.
+// 200 players answering inside 10 s used to mean 200 room broadcasts = 40k packets.
+const ANSWERED_NOTIFY_MIN_INTERVAL_MS = 250;
+const ANSWERED_NOTIFY_TIMER = 'answeredNotify';
+
 export class GameplayLoop {
   private phaseCallbacks: Map<string, (() => void) | null> = new Map();
+  // gameId -> last time the host was sent the answered-count (throttle state).
+  private lastAnsweredNotifyAt: Map<string, number> = new Map();
   private hostDisconnectTimers: Map<string, NodeJS.Timeout> = new Map();
   private idleSweepInterval: NodeJS.Timeout | null = null;
 
@@ -92,6 +99,7 @@ export class GameplayLoop {
     this.phaseCallbacks.delete(gameId);
     this.clearHostDisconnectGrace(gameId);
     this.playerManager.clearOptionPermutations(gameId);
+    this.lastAnsweredNotifyAt.delete(gameId);
     const game = this.gameManager.getGame(gameId);
     if (game) {
       game.gameLoopActive = false;
@@ -411,12 +419,39 @@ export class GameplayLoop {
   }
 
   onPlayerAnswered(game: Game): void {
-    const answeredCount = this.questionManager.getAnsweredPlayerCount(game);
-    const totalPlayers = game.players.filter(p => !p.isHost && p.isConnected).length;
-    console.log(`[PIN ${game.pin}] Player answered | Progress: ${answeredCount}/${totalPlayers}`);
+    this.notifyHostAnswered(game);
     const callback = this.phaseCallbacks.get(game.id);
     if (callback && game.phase === 'answering') {
       callback();
+    }
+  }
+
+  /**
+   * Send the host (only) the current answered/total count, at most once per
+   * ANSWERED_NOTIFY_MIN_INTERVAL_MS. Leading edge fires immediately; a burst inside the
+   * window schedules one trailing emit carrying the latest count.
+   */
+  private notifyHostAnswered(game: Game): void {
+    const now = Date.now();
+    const last = this.lastAnsweredNotifyAt.get(game.id) ?? 0;
+    const elapsed = now - last;
+    if (elapsed >= ANSWERED_NOTIFY_MIN_INTERVAL_MS) {
+      this.emitAnsweredCount(game);
+      return;
+    }
+    // setTimer replaces any pending timer of the same type, so only one trailing emit exists.
+    this.timerManager.setTimer(game.id, ANSWERED_NOTIFY_TIMER, () => {
+      if (game.phase === 'answering') this.emitAnsweredCount(game);
+    }, ANSWERED_NOTIFY_MIN_INTERVAL_MS - elapsed);
+  }
+
+  private emitAnsweredCount(game: Game): void {
+    const host = this.playerManager.getHost(game);
+    const answeredCount = this.questionManager.getAnsweredPlayerCount(game);
+    const totalPlayers = game.players.filter(p => !p.isHost && p.isConnected).length;
+    this.lastAnsweredNotifyAt.set(game.id, Date.now());
+    if (host && host.isConnected) {
+      this.io.to(host.socketId).emit('playerAnswered', answeredCount, totalPlayers);
     }
   }
 

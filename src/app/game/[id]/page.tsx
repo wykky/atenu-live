@@ -70,6 +70,8 @@ interface GameState {
   qEpoch: number | null; // Phase 6: stale-answer guard
   // Short transient message for the player (e.g. why an answer was refused). Auto-cleared.
   notice: string | null;
+  // Host only: "N of M connected players have answered" for the current question.
+  answeredCount: { answered: number; total: number } | null;
   // 0-based index of the question currently in play, taken from the phase deadline.
   // Do NOT read game.currentQuestionIndex for this: the Game object is only
   // re-broadcast on gameStarted / leaderboardShown, so during play it lags a
@@ -93,6 +95,7 @@ type GameAction =
   | { type: 'GAME_STARTED'; payload: Game }
   | { type: 'RECONNECT_SYNC'; payload: Game }
   | { type: 'ANSWER_REJECTED'; payload: string }
+  | { type: 'ANSWERED_COUNT'; payload: { answered: number; total: number } }
   | { type: 'CLEAR_NOTICE' }
   | { type: 'HOST_RECONNECTING'; payload: boolean };
 
@@ -136,6 +139,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         hasAnswered: false,
         questionStats: null,
         personalResult: null,
+        answeredCount: null,
         gameStatus: 'thinking',
         qEpoch: action.payload.deadline?.qEpoch ?? state.qEpoch,
         questionIndex: action.payload.deadline?.questionIndex ?? state.questionIndex,
@@ -180,6 +184,8 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'ANSWER_REJECTED':
       // Un-grey the buttons: if the phase is still (or becomes) open the player can retry.
       return { ...state, notice: action.payload, hasAnswered: false, selectedAnswer: null };
+    case 'ANSWERED_COUNT':
+      return { ...state, answeredCount: action.payload };
     case 'CLEAR_NOTICE':
       return state.notice === null ? state : { ...state, notice: null };
     default:
@@ -204,6 +210,7 @@ const initialState: GameState = {
   hostReconnecting: false,
   qEpoch: null,
   notice: null,
+  answeredCount: null,
   questionIndex: null,
 };
 
@@ -294,7 +301,9 @@ export default function GamePage() {
       dispatch({ type: 'SHOW_LEADERBOARD', payload: { leaderboard: leaderboardData, game: gameData } })
     );
     socket.on('gameFinished', (scores: Player[]) => dispatch({ type: 'GAME_FINISHED', payload: scores }));
-    socket.on('playerAnswered', () => {});
+    socket.on('playerAnswered', (answered: number, total: number) =>
+      dispatch({ type: 'ANSWERED_COUNT', payload: { answered, total } })
+    );
     socket.on('gameLogs', (tsvData: string, filename: string) => {
       const blob = new Blob([tsvData], { type: 'text/tab-separated-values' });
       const url = window.URL.createObjectURL(blob);
@@ -495,6 +504,7 @@ export default function GamePage() {
           onSubmitAnswer={submitAnswer}
           hasAnswered={state.hasAnswered}
           questionIndex={state.questionIndex}
+          answeredCount={state.answeredCount}
         />
         {isHost && <HostPhaseControls onSkip={skipQuestion} onRestart={restartQuestion} />}
       </>
