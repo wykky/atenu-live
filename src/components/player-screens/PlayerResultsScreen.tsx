@@ -117,6 +117,12 @@ export default function PlayerResultsScreen({
             <p className="text-[10px] text-gray-600 mt-0.5 leading-snug">
               {personalResult.pointsBehind} behind <span className="font-bold text-black">{personalResult.nextPlayerName}</span>
             </p>
+          ) : personalResult.position > 1 ? (
+            // pointsBehind is 0 but we are not first: tied with the player above. Without
+            // this branch a whole class tied at 0 after Q1 all read "In the lead!" at #87.
+            <p className="text-[10px] text-gray-600 mt-0.5 leading-snug">
+              Tied with <span className="font-bold text-black">{personalResult.nextPlayerName}</span>
+            </p>
           ) : (
             <p className="text-[10px] font-semibold mt-0.5 leading-snug">In the lead!</p>
           )}
