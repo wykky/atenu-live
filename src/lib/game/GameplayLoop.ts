@@ -218,7 +218,10 @@ export class GameplayLoop {
 
     if (phase === 'thinking') {
       game.phaseStartTime = now - (game.settings.thinkTime * 1000 - remainingMs);
-      const deadline = { serverNow: now, deadlineMs, qEpoch: game.qEpoch, questionIndex: game.currentQuestionIndex };
+      const deadline: PhaseDeadline = {
+        serverNow: now, deadlineMs, qEpoch: game.qEpoch, questionIndex: game.currentQuestionIndex,
+        answering: this.announceAnswering(game, deadlineMs),
+      };
       if (game.settings.shuffleAnswers) {
         game.players.forEach((p) => {
           if (!p.isConnected) return;
@@ -255,6 +258,20 @@ export class GameplayLoop {
       });
       console.log(`[PIN ${game.pin}] Resumed answering with ${remainingSec}s left (qEpoch=${game.qEpoch})`);
     }
+  }
+
+  /**
+   * The answering phase that will follow a thinking phase ending at `thinkingDeadlineMs`.
+   * executeAnsweringPhase increments qEpoch exactly once, so the announced epoch is what
+   * it will use, unless a pause/resume or restart intervenes, in which case a NEW
+   * thinkingPhase (with a new announcement) is sent and the old one is stale by design.
+   */
+  private announceAnswering(game: Game, thinkingDeadlineMs: number): NonNullable<PhaseDeadline['answering']> {
+    return {
+      deadlineMs: thinkingDeadlineMs + game.settings.answerTime * 1000,
+      qEpoch: (game.qEpoch ?? 0) + 1,
+      answerTime: game.settings.answerTime,
+    };
   }
 
   /**
@@ -327,7 +344,10 @@ export class GameplayLoop {
     game.qEpoch = (game.qEpoch ?? 0) + 1;
     const now = Date.now();
     const deadlineMs = now + game.settings.thinkTime * 1000;
-    const deadline = { serverNow: now, deadlineMs, qEpoch: game.qEpoch, questionIndex: game.currentQuestionIndex };
+    const deadline: PhaseDeadline = {
+      serverNow: now, deadlineMs, qEpoch: game.qEpoch, questionIndex: game.currentQuestionIndex,
+      answering: this.announceAnswering(game, deadlineMs),
+    };
     if (game.settings.shuffleAnswers) {
       // Per-player shuffled emit. Host gets the canonical order (projector view).
       game.players.forEach((p) => {
@@ -548,6 +568,7 @@ export class GameplayLoop {
               deadlineMs,
               qEpoch: game.qEpoch ?? 0,
               questionIndex: game.currentQuestionIndex,
+              answering: this.announceAnswering(game, deadlineMs),
             });
           }
         }
@@ -568,11 +589,18 @@ export class GameplayLoop {
           const q = (player && !isHost)
             ? this.playerManager.getQuestionForPlayer(game, player, currentQuestion)
             : currentQuestion;
+          // Announce the CURRENT answering phase (epoch unchanged): the follow-up
+          // answeringPhase emit below lands long before this fake thinking deadline.
           this.io.to(socketId).emit('thinkingPhase', q, game.settings.thinkTime, {
             serverNow: thinkNow,
             deadlineMs: thinkDeadline,
             qEpoch: game.qEpoch ?? 0,
             questionIndex: game.currentQuestionIndex,
+            answering: {
+              deadlineMs: (game.answerDeadlineMs ?? thinkNow) - ANSWER_GRACE_MS,
+              qEpoch: game.qEpoch ?? 0,
+              answerTime: game.settings.answerTime,
+            },
           });
           // The follow-up answeringPhase emit is deferred so the client processes the
           // thinkingPhase first. It is registered with TimerManager (cleared on any phase

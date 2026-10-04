@@ -514,6 +514,12 @@ export class EventHandlers {
         return;
       }
       if (qEpoch !== (game.qEpoch ?? 0)) {
+        // A phone that flipped to answering locally a hair before the server did submits
+        // with the pre-announced epoch (current + 1) while we are still in 'thinking'.
+        if (game.phase === 'thinking' && qEpoch === (game.qEpoch ?? 0) + 1) {
+          reject('early', 'Not open yet — tap again.');
+          return;
+        }
         reject('stale_epoch', 'That question has moved on — your answer was not counted.');
         return;
       }

@@ -58,6 +58,8 @@ interface GameState {
   // Phase deadline translated to THIS device's clock (server deadlineMs + measured offset).
   // One interval recomputes timeLeft from it; see the timer effect in GamePage.
   deadlineAt: number | null;
+  // Pre-announced answering phase (from thinkingPhase): flip locally at `flipAt`.
+  pendingAnswering: { flipAt: number; deadlineAt: number; qEpoch: number; answerTime: number } | null;
   phase: 'thinking' | 'answering';
   // Multi-select: array of indices the player picked. Single-select: single index. null before answering.
   selectedAnswer: number | number[] | null;
@@ -90,6 +92,7 @@ type GameAction =
   | { type: 'SET_GAME_DATA'; payload: { game: Game; status: GamePhase } }
   | { type: 'START_THINKING_PHASE'; payload: { question: Question; thinkTime: number; deadline?: PhaseDeadline } }
   | { type: 'START_ANSWERING_PHASE'; payload: { answerTime: number; deadline?: PhaseDeadline } }
+  | { type: 'LOCAL_FLIP_TO_ANSWERING' }
   | { type: 'SUBMIT_ANSWER'; payload: { answer: number | number[] } }
   | { type: 'QUESTION_ENDED'; payload: GameStats }
   | { type: 'WAITING_FOR_RESULTS' }
@@ -131,10 +134,18 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     }
     case 'START_THINKING_PHASE': {
       const { deadlineAt, timeLeft } = localDeadline(action.payload.deadline, action.payload.thinkTime);
+      const ann = action.payload.deadline?.answering;
+      // The offset is already folded into deadlineAt; the announced answering deadline sits
+      // answerTime after it. Flip a hair AFTER the thinking deadline so the server (which
+      // flips on its own timer) is already in 'answering' when the first tap arrives.
+      const pendingAnswering = ann
+        ? { flipAt: deadlineAt + LOCAL_FLIP_MARGIN_MS, deadlineAt: deadlineAt + ann.answerTime * 1000, qEpoch: ann.qEpoch, answerTime: ann.answerTime }
+        : null;
       return {
         ...state,
         currentQuestion: action.payload.question,
         deadlineAt,
+        pendingAnswering,
         timeLeft,
         phase: 'thinking',
         selectedAnswer: null,
@@ -147,10 +158,25 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         questionIndex: action.payload.deadline?.questionIndex ?? state.questionIndex,
       };
     }
+    case 'LOCAL_FLIP_TO_ANSWERING': {
+      const p = state.pendingAnswering;
+      if (!p || state.gameStatus !== 'thinking' || state.hostReconnecting) return state;
+      return {
+        ...state,
+        pendingAnswering: null,
+        deadlineAt: p.deadlineAt,
+        timeLeft: Math.max(0, Math.ceil((p.deadlineAt - Date.now()) / 1000)),
+        phase: 'answering',
+        gameStatus: 'answering',
+        qEpoch: p.qEpoch,
+      };
+    }
     case 'START_ANSWERING_PHASE': {
+      // Authoritative packet: (re)sets the deadline whether or not we flipped locally.
       const { deadlineAt, timeLeft } = localDeadline(action.payload.deadline, action.payload.answerTime);
       return {
         ...state,
+        pendingAnswering: null,
         deadlineAt,
         timeLeft,
         phase: 'answering',
@@ -209,6 +235,8 @@ function gameReducer(state: GameState, action: GameAction): GameState {
  * survives re-renders and reconnects within the tab.
  */
 let clockOffsetMs: number | null = null;
+// Local flip happens this long after the computed thinking deadline (see LOCAL_FLIP_TO_ANSWERING).
+const LOCAL_FLIP_MARGIN_MS = 120;
 
 function localDeadline(deadline: PhaseDeadline | undefined, fallbackSeconds: number): { deadlineAt: number; timeLeft: number } {
   const now = Date.now();
@@ -226,6 +254,7 @@ const initialState: GameState = {
   currentQuestion: null,
   timeLeft: 0,
   deadlineAt: null,
+  pendingAnswering: null,
   phase: 'thinking',
   selectedAnswer: null,
   hasAnswered: false,
@@ -256,6 +285,8 @@ export default function GamePage() {
   // Phase 8: client-side timestamp of when the current answering phase started (locally).
   // Used to report perceived time on submit for adaptive scoring.
   const answeringPhaseStartedAtRef = useRef<number | null>(null);
+  // qEpoch of the answering phase we flipped to locally (before the packet), if any.
+  const localFlipEpochRef = useRef<number | null>(null);
 
   useEffect(() => {
     const socket = getSocket();
@@ -319,7 +350,11 @@ export default function GamePage() {
       dispatch({ type: 'START_THINKING_PHASE', payload: { question, thinkTime, deadline } })
     );
     socket.on('answeringPhase', (answerTime: number, deadline?: PhaseDeadline) => {
-      answeringPhaseStartedAtRef.current = Date.now(); // Phase 8: local clock at phase start
+      // Phase 8: local clock at phase start. If the phone already flipped locally for this
+      // epoch, keep the earlier timestamp; the packet is late by one network hop.
+      if (deadline?.qEpoch === undefined || localFlipEpochRef.current !== deadline.qEpoch) {
+        answeringPhaseStartedAtRef.current = Date.now();
+      }
       dispatch({ type: 'START_ANSWERING_PHASE', payload: { answerTime, deadline } });
     });
     socket.on('questionEnded', () => dispatch({ type: 'WAITING_FOR_RESULTS' }));
@@ -380,6 +415,19 @@ export default function GamePage() {
       socket.off('kicked');
     };
   }, [gameId, isHost, router]);
+
+  // Pre-announced flip: show the answer buttons at the computed local time instead of waiting
+  // for the answeringPhase packet (one network hop, i.e. the whole speed bonus on 3G).
+  useEffect(() => {
+    const p = state.pendingAnswering;
+    if (!p || state.gameStatus !== 'thinking' || state.hostReconnecting) return;
+    const t = setTimeout(() => {
+      localFlipEpochRef.current = p.qEpoch;
+      answeringPhaseStartedAtRef.current = Date.now();
+      dispatch({ type: 'LOCAL_FLIP_TO_ANSWERING' });
+    }, Math.max(0, p.flipAt - Date.now()));
+    return () => clearTimeout(t);
+  }, [state.pendingAnswering, state.gameStatus, state.hostReconnecting]);
 
   // One interval per phase, recomputing timeLeft from the absolute local deadline. The
   // previous effect depended on timeLeft and was torn down and rebuilt every second, so

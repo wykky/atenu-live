@@ -163,6 +163,15 @@ export interface PhaseDeadline {
   // for this: the Game object is only re-broadcast on gameStarted / leaderboardShown,
   // so during play it lags one question behind (and reads -1 on the very first).
   questionIndex: number;
+  // Present on thinkingPhase only: the answering phase that WILL follow, pre-announced so a
+  // phone can flip to the answer buttons at the computed local time instead of waiting one
+  // network hop for the answeringPhase packet (on 3G that hop is the speed bonus). The real
+  // answeringPhase packet still arrives and corrects the deadline.
+  answering?: {
+    deadlineMs: number; // server clock, expected end of answering (before grace)
+    qEpoch: number;     // the epoch answering will use; submit with this
+    answerTime: number; // seconds
+  };
 }
 
 // Socket Events
