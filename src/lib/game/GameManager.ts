@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { randomInt } from 'crypto';
-import type { Game, Question, GameSettings, GamePhase } from '@/types/game';
+import type { Game, Question, GameSettings, GamePhase, Player } from '@/types/game';
 import { gameConfig } from '@/lib/config';
 import { insertGame, updateGameStatus, upsertPlayer } from '@/lib/db';
 
@@ -197,6 +197,24 @@ export class GameManager {
  * needed the full list. Only the count was actually used, and that is preserved as
  * `totalQuestions`.
  */
+/**
+ * Public projection of a Player for broadcast to clients. Drops socketId (an internal
+ * routing handle), currentAnswer / answerTime (would leak live answers to other players)
+ * and the per-question scoring scratch fields. `isHost` and `hasDyslexiaSupport` stay
+ * because the host lobby roster filters on / toggles them.
+ */
+export function toPublicPlayer(p: Player): Player {
+  return {
+    id: p.id,
+    name: p.name,
+    score: p.score,
+    isHost: p.isHost,
+    isConnected: p.isConnected,
+    rank: p.rank,
+    hasDyslexiaSupport: p.hasDyslexiaSupport,
+  } as Player;
+}
+
 export function sanitizeGameForClient(game: Game): Game {
   return {
     ...game,

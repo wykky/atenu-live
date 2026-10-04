@@ -89,6 +89,7 @@ type GameAction =
   | { type: 'GAME_FINISHED'; payload: Player[] }
   | { type: 'TICK_TIMER' }
   | { type: 'GAME_STARTED'; payload: Game }
+  | { type: 'RECONNECT_SYNC'; payload: Game }
   | { type: 'HOST_RECONNECTING'; payload: boolean };
 
 function gameReducer(state: GameState, action: GameAction): GameState {
@@ -101,6 +102,20 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, game: action.payload.game, gameStatus: action.payload.status, isValidating: false };
     case 'GAME_STARTED':
       return { ...state, game: action.payload, gameStatus: 'preparation' };
+    case 'RECONNECT_SYNC': {
+      // After a socket reconnect the server re-sends the phase events (thinkingPhase /
+      // answeringPhase / leaderboardShown / gameFinished) that drive the UI, so only
+      // refresh the Game object here. 'results' has no sync event: fall back to the
+      // waiting-for-results screen unless this player already has their result.
+      const g = action.payload;
+      const gameStatus =
+        g.status === 'results' && !state.personalResult && !state.questionStats
+          ? 'waiting-results'
+          : g.status === 'waiting'
+            ? 'waiting'
+            : state.gameStatus;
+      return { ...state, game: g, gameStatus, hostReconnecting: false };
+    }
     case 'START_THINKING_PHASE': {
       // Phase 6: derive timeLeft from server's absolute deadline if available, fall back to thinkTime
       let timeLeft = action.payload.thinkTime;
@@ -220,20 +235,37 @@ export default function GamePage() {
     const urlParams = new URLSearchParams(window.location.search);
     const isPlayerParam = urlParams.get('player') === 'true';
 
-    socket.emit('validateGame', gameId, buildAuth(), (valid: boolean, gameData?: Game) => {
-      dispatch({ type: 'SET_VALIDATING', payload: false });
-      if (valid && gameData) {
-        dispatch({ type: 'SET_GAME_DATA', payload: { game: gameData, status: gameData.status } });
-      } else {
-        dispatch({
-          type: 'SET_GAME_ERROR',
-          payload: isPlayerParam
-            ? 'Unable to rejoin game. You may have been removed.'
-            : 'Game not found or no longer available',
-        });
-        setTimeout(() => router.push('/'), 3000);
-      }
-    });
+    const validate = (isReconnect: boolean) => {
+      socket.emit('validateGame', gameId, buildAuth(), (valid: boolean, gameData?: Game) => {
+        if (isReconnect) {
+          if (valid && gameData) dispatch({ type: 'RECONNECT_SYNC', payload: gameData });
+          // On failure keep the current screen: the game may have finished and been
+          // released, and the final-results screen is already showing.
+          return;
+        }
+        dispatch({ type: 'SET_VALIDATING', payload: false });
+        if (valid && gameData) {
+          dispatch({ type: 'SET_GAME_DATA', payload: { game: gameData, status: gameData.status } });
+        } else {
+          dispatch({
+            type: 'SET_GAME_ERROR',
+            payload: isPlayerParam
+              ? 'Unable to rejoin game. You may have been removed.'
+              : 'Game not found or no longer available',
+          });
+          setTimeout(() => router.push('/'), 3000);
+        }
+      });
+    };
+    validate(false);
+
+    // Socket.IO reconnects transparently, but the NEW server-side socket is not in the game
+    // room and the server still holds the old socketId with isConnected=false (which, for the
+    // host, leaves the grace timer running until the game auto-finishes). Re-validate with
+    // the stored auth on every reconnect so the server swaps the socketId, rejoins the room,
+    // clears the grace timer and re-syncs the current phase.
+    const onReconnect = () => validate(true);
+    socket.io.on('reconnect', onReconnect);
 
     socket.on('gameStarted', (gameData: Game) => dispatch({ type: 'GAME_STARTED', payload: gameData }));
     socket.on('thinkingPhase', (question: Question, thinkTime: number, deadline?: PhaseDeadline) =>
@@ -278,6 +310,7 @@ export default function GamePage() {
     });
 
     return () => {
+      socket.io.off('reconnect', onReconnect);
       socket.off('gameStarted');
       socket.off('thinkingPhase');
       socket.off('answeringPhase');

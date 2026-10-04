@@ -5,9 +5,10 @@ import type {
   Question,
   GameSettings,
   Game,
+  Player,
   ValidateGameAuth,
 } from '@/types/game';
-import { GameManager, sanitizeGameForClient } from './GameManager';
+import { GameManager, sanitizeGameForClient, toPublicPlayer } from './GameManager';
 import { PlayerManager } from './PlayerManager';
 import { QuestionManager } from './QuestionManager';
 import { GameplayLoop } from './GameplayLoop';
@@ -401,17 +402,11 @@ export class EventHandlers {
       // Determine identity from auth — server cannot trust the socket alone.
       let isHost = false;
       let isKnownPlayer = false;
+      let reconnectedPlayer: Player | undefined;
 
       if (auth && typeof auth === 'object') {
         if (auth.hostToken && verifyHostToken(auth.hostToken, game.id, game.hostId)) {
           isHost = true;
-          // Host reconnect: refresh socketId, mark connected, clear any grace timer
-          const hostPlayer = this.playerManager.getHost(game);
-          if (hostPlayer) {
-            hostPlayer.socketId = socket.id;
-            hostPlayer.isConnected = true;
-          }
-          this.gameplayLoop.clearHostDisconnectGrace(game.id);
         } else if (
           auth.playerId &&
           auth.playerToken &&
@@ -420,8 +415,7 @@ export class EventHandlers {
           const player = this.playerManager.getPlayerById(auth.playerId, game);
           if (player && !player.isHost) {
             isKnownPlayer = true;
-            player.socketId = socket.id;
-            player.isConnected = true;
+            reconnectedPlayer = player;
           }
         }
       }
@@ -434,11 +428,36 @@ export class EventHandlers {
         return;
       }
 
+      // Join the room BEFORE swapping identities: clearHostDisconnectGrace -> resume emits
+      // to the room and to player sockets, and both must reach this socket.
       socket.join(game.id);
       this.gameManager.attachSocket(socket.id, game.id); // Phase 7
+
+      if (isHost && host) {
+        // Host (re)connect: swap socketId, mark connected, clear any grace timer (resumes a
+        // paused phase). The old socket, if still around, is detached so its eventual
+        // 'disconnect' cannot mark the host offline again.
+        if (host.socketId && host.socketId !== socket.id) this.gameManager.detachSocket(host.socketId);
+        host.socketId = socket.id;
+        host.isConnected = true;
+        this.gameplayLoop.clearHostDisconnectGrace(game.id);
+      } else if (reconnectedPlayer) {
+        const wasOffline = !reconnectedPlayer.isConnected || reconnectedPlayer.socketId !== socket.id;
+        if (reconnectedPlayer.socketId && reconnectedPlayer.socketId !== socket.id) {
+          this.gameManager.detachSocket(reconnectedPlayer.socketId);
+        }
+        reconnectedPlayer.socketId = socket.id;
+        reconnectedPlayer.isConnected = true;
+        // Only the host roster cares; don't wake 200 phones for one reconnect.
+        if (wasOffline && host?.isConnected) {
+          this.io.to(host.socketId).emit('playerReconnected', toPublicPlayer(reconnectedPlayer));
+        }
+      }
+
       if (game.gameLoopActive) {
         this.gameplayLoop.syncPlayerToCurrentPhase(game, socket.id, isHost, isKnownPlayer);
       }
+      this.gameManager.markActive(game.id);
       callback(true, sanitizeGameForClient(game));
     } catch (error) {
       console.error('[VALIDATE_GAME] Error:', error);

@@ -128,6 +128,14 @@ app.prepare().then(() => {
     // cheapest win available. threshold:1024 leaves the small hot-path frames
     // (answeringPhase, per-answer acks) uncompressed so we don't burn CPU on them.
     perMessageDeflate: { threshold: 1024 },
+    // On a short drop (3G handover, tab backgrounded) the client comes back with the SAME
+    // socket.id, rooms restored, and the room events it missed are replayed. The client
+    // still re-validates on every reconnect (see /game/[id]) because 'disconnect' already
+    // fired server-side and marked the player offline.
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000,
+      skipMiddlewares: true,
+    },
     cors: {
       origin: allowedOrigins,
       methods: ['GET', 'POST'],
