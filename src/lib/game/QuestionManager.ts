@@ -65,48 +65,40 @@ export class QuestionManager {
     };
   }
 
-  getPersonalResult(game: Game, playerId: string): PersonalResult | undefined {
-    const player = game.players.find(p => p.id === playerId);
+  /**
+   * Per-player results for the current question, computed in ONE pass: sort the
+   * leaderboard once and build an id -> position map, instead of re-sorting and
+   * re-scanning for every player (was O(n^2) per results phase, 200 players = 40k
+   * comparisons x 200 sorts).
+   */
+  getPersonalResults(game: Game): Map<string, PersonalResult> {
+    const results = new Map<string, PersonalResult>();
     const question = this.getCurrentQuestion(game);
+    if (!question) return results;
 
-    if (!player || !question || player.isHost) {
-      return undefined;
-    }
-
-    const wasCorrect = isAnswerCorrect(question, player.currentAnswer);
-    // Canonical: read points cached by PlayerManager.updateScores. Same number as the TSV
-    // row and the score delta on the live leaderboard — no recomputation, no drift.
-    const pointsEarned = player.lastPointsEarned ?? 0;
-
-    // Get leaderboard to determine position
     const leaderboard = game.players
       .filter(p => !p.isHost)
       .sort((a, b) => b.score - a.score);
-    
-    const position = leaderboard.findIndex(p => p.id === playerId) + 1;
-    
-    // Calculate points behind leader and get next player info
-    let pointsBehind = 0;
-    let nextPlayerName: string | null = null;
-    
-    if (position > 1) {
-      const playerAbove = leaderboard[position - 2];
-      pointsBehind = playerAbove.score - player.score;
-      nextPlayerName = playerAbove.name;
-    }
 
-    return {
-      wasCorrect,
-      pointsEarned,
-      totalScore: player.score,
-      position,
-      pointsBehind,
-      nextPlayerName,
-      explanation: question.explanation,
-      currentStreak: player.currentStreak ?? 0,
-      streakBonus: player.streakBonus ?? 0,
-      firstCorrectBonus: player.firstCorrectBonus ?? 0,
-    };
+    leaderboard.forEach((player, idx) => {
+      const position = idx + 1;
+      const playerAbove = idx > 0 ? leaderboard[idx - 1] : undefined;
+      results.set(player.id, {
+        wasCorrect: isAnswerCorrect(question, player.currentAnswer),
+        // Canonical: points cached by PlayerManager.updateScores. Same number as the TSV
+        // row and the score delta on the live leaderboard — no recomputation, no drift.
+        pointsEarned: player.lastPointsEarned ?? 0,
+        totalScore: player.score,
+        position,
+        pointsBehind: playerAbove ? playerAbove.score - player.score : 0,
+        nextPlayerName: playerAbove ? playerAbove.name : null,
+        explanation: question.explanation,
+        currentStreak: player.currentStreak ?? 0,
+        streakBonus: player.streakBonus ?? 0,
+        firstCorrectBonus: player.firstCorrectBonus ?? 0,
+      });
+    });
+    return results;
   }
 
   hasAllPlayersAnswered(game: Game): boolean {

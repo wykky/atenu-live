@@ -386,15 +386,15 @@ export class GameplayLoop {
       if (host && host.isConnected) {
         this.io.to(host.socketId).emit('hostResults', stats);
       }
+      const personalResults = this.questionManager.getPersonalResults(game);
       game.players.forEach((player) => {
-        if (!player.isHost) {
-          const personalResult = this.questionManager.getPersonalResult(game, player.id);
-          if (personalResult) {
-            const view = this.playerManager.getShuffledQuestionForPlayer(game, player, currentQuestion);
-            personalResult.correctAnswer = view.correctAnswer;
-            if (view.correctAnswers) personalResult.correctAnswers = view.correctAnswers;
-            this.io.to(player.socketId).emit('personalResult', personalResult);
-          }
+        if (player.isHost || !player.isConnected) return;
+        const personalResult = personalResults.get(player.id);
+        if (personalResult) {
+          const view = this.playerManager.getShuffledQuestionForPlayer(game, player, currentQuestion);
+          personalResult.correctAnswer = view.correctAnswer;
+          if (view.correctAnswers) personalResult.correctAnswers = view.correctAnswers;
+          this.io.to(player.socketId).emit('personalResult', personalResult);
         }
       });
     }
