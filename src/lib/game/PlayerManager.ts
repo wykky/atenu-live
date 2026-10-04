@@ -487,6 +487,8 @@ export class PlayerManager {
       'has_dyslexia_support',
     ];
     const rows: string[] = [headers.join('\t')];
+    // A tab, CR or LF inside a cell would break the row structure of the export.
+    const cell = (v: string) => v.replace(/[\t\r\n]+/g, ' ');
     const sortedAnswers = [...game.answerHistory].sort((a, b) => {
       if (a.questionIndex !== b.questionIndex) return a.questionIndex - b.questionIndex;
       return a.playerName.localeCompare(b.playerName);
@@ -510,15 +512,15 @@ export class PlayerManager {
         ar.questionIndex.toString(),
         qDatetime,
         question.questionType === 'multi' ? 'multi' : 'single',
-        question.question.replace(/\t/g, ' '),
-        correctStr.replace(/\t/g, ' '),
-        wrongs[0].replace(/\t/g, ' '),
-        wrongs[1].replace(/\t/g, ' '),
-        wrongs[2].replace(/\t/g, ' '),
-        (question.explanation || '').replace(/\t/g, ' '),
+        cell(question.question),
+        cell(correctStr),
+        cell(wrongs[0]),
+        cell(wrongs[1]),
+        cell(wrongs[2]),
+        cell((question.explanation || '')),
         ar.playerId,
-        ar.playerName.replace(/\t/g, ' '),
-        choiceStr.replace(/\t/g, ' '),
+        cell(ar.playerName),
+        cell(choiceStr),
         cDatetime,
         ar.hasDyslexiaSupport ? 'true' : 'false',
       ].join('\t'));
