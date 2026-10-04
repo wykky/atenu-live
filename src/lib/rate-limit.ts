@@ -105,8 +105,10 @@ export const createGameIpLimiter  = new RateLimiter('createGame.ip',   { capacit
 // submitAnswer: 8 burst, ~2/sec sustained, keyed per player. Even fast clickers stay well under.
 export const submitAnswerLimiter  = new RateLimiter('submitAnswer',    { capacity: 8,  refillIntervalMs: 500 });
 
-// validateGame: 30 per IP / 2 sec — covers reconnect storms on flaky 3G.
-export const validateGameLimiter  = new RateLimiter('validateGame.ip', { capacity: 30, refillIntervalMs: 2000 });
+// validateGame: same shape as joinGame. Every player calls this once per /game/[id] load AND
+// once per socket reconnect, and a whole classroom (or an Ethio Telecom CGNAT block) shares
+// one IP. The old 30-burst / 0.5-per-s bucket locked the 31st student out for minutes.
+export const validateGameLimiter  = new RateLimiter('validateGame.ip', { capacity: 250, refillIntervalMs: 200 });
 
 // downloadGameLogs: rare host action, low limit.
 export const downloadLogsLimiter  = new RateLimiter('downloadLogs.ip', { capacity: 5,  refillIntervalMs: 30_000 });

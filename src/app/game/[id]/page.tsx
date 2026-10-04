@@ -3,6 +3,7 @@
 import { useEffect, useReducer, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { getSocket } from '@/lib/socket-client';
+import { getPlayerCreds } from '@/lib/player-storage';
 import type { Game, Question, GameStats, Player, PersonalResult, GamePhase, PhaseDeadline } from '@/types/game';
 // Game Screen Components
 import GameValidationScreen from '@/components/game-screens/GameValidationScreen';
@@ -49,8 +50,6 @@ function HostPhaseControls({ onSkip, onRestart }: { onSkip: () => void; onRestar
 }
 
 const HOST_TOKEN_KEY = (gameId: string) => `host_token_${gameId}`;
-const PLAYER_ID_KEY = (pin: string) => `player_id_${pin}`;
-const PLAYER_TOKEN_KEY = (pin: string) => `player_token_${pin}`;
 
 interface GameState {
   game: Game | null;
@@ -205,63 +204,36 @@ export default function GamePage() {
       return;
     }
 
-    // Build the auth payload for validateGame
-    const buildAuth = (gameData?: Game) => {
+    // Build the auth payload for validateGame. Player credentials are keyed by gameId
+    // (see player-storage.ts), so a single validateGame round trip suffices.
+    const buildAuth = () => {
       if (isHost) {
         const t = (() => {
           try { return localStorage.getItem(HOST_TOKEN_KEY(gameId)) || ''; } catch { return ''; }
         })();
         return { hostToken: t };
       }
-      if (gameData) {
-        const pin = gameData.pin;
-        const pid = (() => {
-          try { return localStorage.getItem(PLAYER_ID_KEY(pin)) || ''; } catch { return ''; }
-        })();
-        const tok = (() => {
-          try { return localStorage.getItem(PLAYER_TOKEN_KEY(pin)) || ''; } catch { return ''; }
-        })();
-        return { playerId: pid, playerToken: tok };
-      }
-      return {};
+      const creds = getPlayerCreds(gameId);
+      return creds ? { playerId: creds.playerId, playerToken: creds.playerToken } : {};
     };
 
     const urlParams = new URLSearchParams(window.location.search);
     const isPlayerParam = urlParams.get('player') === 'true';
 
-    if (isPlayerParam) {
-      // First, validateGame with empty auth to fetch game (for PIN). Then re-validate with full auth.
-      socket.emit('validateGame', gameId, {}, (valid: boolean, gameData?: Game) => {
-        if (valid && gameData) {
-          const auth = buildAuth(gameData);
-          // Re-validate with the real player auth so the server marks us as known
-          socket.emit('validateGame', gameId, auth, (valid2: boolean, gameData2?: Game) => {
-            dispatch({ type: 'SET_VALIDATING', payload: false });
-            if (valid2 && gameData2) {
-              dispatch({ type: 'SET_GAME_DATA', payload: { game: gameData2, status: gameData2.status } });
-            } else {
-              dispatch({ type: 'SET_GAME_ERROR', payload: 'Unable to rejoin game. You may have been removed.' });
-              setTimeout(() => router.push('/'), 3000);
-            }
-          });
-        } else {
-          dispatch({ type: 'SET_VALIDATING', payload: false });
-          dispatch({ type: 'SET_GAME_ERROR', payload: 'Game not found or no longer available' });
-          setTimeout(() => router.push('/'), 3000);
-        }
-      });
-    } else {
-      const auth = buildAuth();
-      socket.emit('validateGame', gameId, auth, (valid: boolean, gameData?: Game) => {
-        dispatch({ type: 'SET_VALIDATING', payload: false });
-        if (valid && gameData) {
-          dispatch({ type: 'SET_GAME_DATA', payload: { game: gameData, status: gameData.status } });
-        } else {
-          dispatch({ type: 'SET_GAME_ERROR', payload: 'Game not found or no longer available' });
-          setTimeout(() => router.push('/'), 3000);
-        }
-      });
-    }
+    socket.emit('validateGame', gameId, buildAuth(), (valid: boolean, gameData?: Game) => {
+      dispatch({ type: 'SET_VALIDATING', payload: false });
+      if (valid && gameData) {
+        dispatch({ type: 'SET_GAME_DATA', payload: { game: gameData, status: gameData.status } });
+      } else {
+        dispatch({
+          type: 'SET_GAME_ERROR',
+          payload: isPlayerParam
+            ? 'Unable to rejoin game. You may have been removed.'
+            : 'Game not found or no longer available',
+        });
+        setTimeout(() => router.push('/'), 3000);
+      }
+    });
 
     socket.on('gameStarted', (gameData: Game) => dispatch({ type: 'GAME_STARTED', payload: gameData }));
     socket.on('thinkingPhase', (question: Question, thinkTime: number, deadline?: PhaseDeadline) =>
@@ -334,18 +306,13 @@ export default function GamePage() {
   const submitAnswer = (answer: number | number[]) => {
     if (state.hasAnswered || !state.currentQuestion || state.phase !== 'answering') return;
     dispatch({ type: 'SUBMIT_ANSWER', payload: { answer } });
-    const gamePin = state.game?.pin;
-    if (!gamePin || !gameId) return;
-    const persistentId = (() => {
-      try { return localStorage.getItem(PLAYER_ID_KEY(gamePin)) || ''; } catch { return ''; }
-    })();
-    const playerToken = (() => {
-      try { return localStorage.getItem(PLAYER_TOKEN_KEY(gamePin)) || ''; } catch { return ''; }
-    })();
-    if (!persistentId || !playerToken) {
+    if (!gameId) return;
+    const creds = getPlayerCreds(gameId);
+    if (!creds) {
       console.warn('[submitAnswer] missing playerId/playerToken — answer cannot be submitted');
       return;
     }
+    const { playerId: persistentId, playerToken } = creds;
     const socket = getSocket();
     // Phase 8: client-perceived time elapsed since answering phase started locally
     const clientPerceivedMs =

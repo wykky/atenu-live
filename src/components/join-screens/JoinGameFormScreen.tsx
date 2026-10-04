@@ -5,14 +5,13 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { LogIn, Lock, Dice6 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { getSocket } from '@/lib/socket-client';
+import { getPlayerCredsByPin, savePlayerCreds, clearPlayerCredsByPin } from '@/lib/player-storage';
 import type { Game } from '@/types/game';
 import { gameConfig, featureConfig } from '@/lib/config';
 import Button from '@/components/Button';
 import Card from '@/components/Card';
 import Input from '@/components/Input';
 
-const PLAYER_ID_KEY = (pin: string) => `player_id_${pin}`;
-const PLAYER_TOKEN_KEY = (pin: string) => `player_token_${pin}`;
 
 export default function JoinGameFormScreen() {
   const { data: session } = useSession();
@@ -51,16 +50,9 @@ export default function JoinGameFormScreen() {
 
     // Phase 2: existing persistentId is only useful if we ALSO have its playerToken.
     // Otherwise treat as a fresh join (server will reject reconnect without a valid token).
-    let persistentId: string | null = null;
-    let playerToken: string | null = null;
-    try {
-      persistentId = localStorage.getItem(PLAYER_ID_KEY(pin));
-      playerToken = localStorage.getItem(PLAYER_TOKEN_KEY(pin));
-      if (persistentId && !playerToken) persistentId = null;
-    } catch {
-      persistentId = null;
-      playerToken = null;
-    }
+    const saved = getPlayerCredsByPin(pin);
+    const persistentId: string | null = saved?.playerId ?? null;
+    const playerToken: string | null = saved?.playerToken ?? null;
 
     socket.emit(
       'joinGame',
@@ -72,10 +64,7 @@ export default function JoinGameFormScreen() {
       (success: boolean, game?: Game, playerId?: string, newPlayerToken?: string) => {
         setIsJoining(false);
         if (success && game && playerId) {
-          try {
-            localStorage.setItem(PLAYER_ID_KEY(game.pin), playerId);
-            if (newPlayerToken) localStorage.setItem(PLAYER_TOKEN_KEY(game.pin), newPlayerToken);
-          } catch {}
+          savePlayerCreds(game.id, game.pin, playerId, newPlayerToken ?? playerToken);
           // If the server didn't issue a new token (reconnect path), keep the old one.
           if (!newPlayerToken && !playerToken) {
             console.warn('[join] No playerToken returned — answers will be rejected.');
@@ -84,10 +73,7 @@ export default function JoinGameFormScreen() {
         } else {
           // Reconnect attempt failed → clear stale credentials and ask the user to retry
           if (persistentId) {
-            try {
-              localStorage.removeItem(PLAYER_ID_KEY(pin));
-              localStorage.removeItem(PLAYER_TOKEN_KEY(pin));
-            } catch {}
+            clearPlayerCredsByPin(pin);
             setError('Game not found or already started. Please check the PIN and try again.');
           } else {
             setError('Game not found or already started. Please check the PIN and try again.');

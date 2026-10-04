@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { getGradient } from '@/lib/palette';
 import type { Player, Game } from '@/types/game';
 
-const PLAYER_ID_KEY = (pin: string) => `player_id_${pin}`;
+import { getPlayerId } from '@/lib/player-storage';
 // Top 3 mid-game, not 5: on a phone, 5 rows plus the player's own row plus the
 // "next question" banner crowds the screen. 3 also means every visible row is a
 // podium medal. The player's own standing is always shown regardless of rank.
@@ -61,13 +61,9 @@ export default function PlayerLeaderboardScreen({
   // localStorage is read after mount to keep server and first client render identical.
   const [myId, setMyId] = useState<string | null>(null);
   useEffect(() => {
-    if (!game?.pin) return;
-    try {
-      setMyId(localStorage.getItem(PLAYER_ID_KEY(game.pin)));
-    } catch {
-      /* private mode / storage blocked: fall back to no highlight */
-    }
-  }, [game?.pin]);
+    if (!game?.id) return;
+    setMyId(getPlayerId(game.id));
+  }, [game?.id]);
 
   // Server sets a tie-aware `rank` (1,1,3,...). Fall back to list position so a
   // missing rank shows a sensible number instead of a "0" badge for everyone.
