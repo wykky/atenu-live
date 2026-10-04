@@ -127,6 +127,19 @@ export class PlayerManager {
   }
 
   /**
+   * What a PLAYER's phone receives during thinking/answering: the (optionally shuffled)
+   * question WITHOUT its answer key. correctAnswer is -1 and correctAnswers is dropped;
+   * the real values for this player's order are revealed in personalResult. Before this,
+   * any student could read the answer out of the socket frame in devtools.
+   */
+  getQuestionForPlayer(game: Game, player: Player, question: Question): Question {
+    const q = this.getShuffledQuestionForPlayer(game, player, question);
+    const stripped: Question = { ...q, correctAnswer: -1 };
+    delete stripped.correctAnswers;
+    return stripped;
+  }
+
+  /**
    * Map a player's "what they clicked" index (in their shuffled space) back to the
    * canonical option index used by question.correctAnswer.
    */

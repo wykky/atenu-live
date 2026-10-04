@@ -166,8 +166,15 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, questionStats: action.payload, gameStatus: 'results' };
     case 'WAITING_FOR_RESULTS':
       return { ...state, gameStatus: 'waiting-results' };
-    case 'PERSONAL_RESULT':
-      return { ...state, personalResult: action.payload, gameStatus: 'results' };
+    case 'PERSONAL_RESULT': {
+      // The player's thinkingPhase copy had the answer key stripped; merge the revealed
+      // key (already in this player's option order) so the results screen can highlight it.
+      const r = action.payload;
+      const currentQuestion = state.currentQuestion && typeof r.correctAnswer === 'number'
+        ? { ...state.currentQuestion, correctAnswer: r.correctAnswer, correctAnswers: r.correctAnswers }
+        : state.currentQuestion;
+      return { ...state, personalResult: r, currentQuestion, gameStatus: 'results' };
+    }
     case 'SHOW_LEADERBOARD':
       return {
         ...state,

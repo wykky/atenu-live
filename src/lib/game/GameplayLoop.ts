@@ -3,7 +3,9 @@ import type {
   ServerToClientEvents,
   ClientToServerEvents,
   Game,
-  GamePhase
+  GamePhase,
+  Question,
+  PhaseDeadline
 } from '@/types/game';
 import { GameManager, sanitizeGameForClient, toPublicPlayer } from './GameManager';
 import { finishGame as dbFinishGame } from '@/lib/db';
@@ -213,11 +215,11 @@ export class GameplayLoop {
       if (game.settings.shuffleAnswers) {
         game.players.forEach((p) => {
           if (!p.isConnected) return;
-          const q = p.isHost ? question : this.playerManager.getShuffledQuestionForPlayer(game, p, question);
+          const q = p.isHost ? question : this.playerManager.getQuestionForPlayer(game, p, question);
           this.io.to(p.socketId).emit('thinkingPhase', q, remainingSec, deadline);
         });
       } else {
-        this.io.to(game.id).emit('thinkingPhase', question, remainingSec, deadline);
+        this.emitThinkingPhaseUnshuffled(game, question, remainingSec, deadline);
       }
       this.timerManager.setThinkingPhaseTimer(game.id, () => {
         this.executePhase(game, 'answering');
@@ -245,6 +247,22 @@ export class GameplayLoop {
         }
       });
       console.log(`[PIN ${game.pin}] Resumed answering with ${remainingSec}s left (qEpoch=${game.qEpoch})`);
+    }
+  }
+
+  /**
+   * Unshuffled thinkingPhase: one room broadcast of the key-stripped question for players,
+   * plus the full question to the host socket (projector view / results highlighting).
+   */
+  private emitThinkingPhaseUnshuffled(game: Game, question: Question, seconds: number, deadline: PhaseDeadline): void {
+    const host = this.playerManager.getHost(game);
+    const stripped: Question = { ...question, correctAnswer: -1 };
+    delete stripped.correctAnswers;
+    if (host && host.isConnected) {
+      this.io.to(game.id).except(host.socketId).emit('thinkingPhase', stripped, seconds, deadline);
+      this.io.to(host.socketId).emit('thinkingPhase', question, seconds, deadline);
+    } else {
+      this.io.to(game.id).emit('thinkingPhase', stripped, seconds, deadline);
     }
   }
 
@@ -307,11 +325,11 @@ export class GameplayLoop {
       // Per-player shuffled emit. Host gets the canonical order (projector view).
       game.players.forEach((p) => {
         if (!p.isConnected) return;
-        const q = p.isHost ? question : this.playerManager.getShuffledQuestionForPlayer(game, p, question);
+        const q = p.isHost ? question : this.playerManager.getQuestionForPlayer(game, p, question);
         this.io.to(p.socketId).emit('thinkingPhase', q, game.settings.thinkTime, deadline);
       });
     } else {
-      this.io.to(game.id).emit('thinkingPhase', question, game.settings.thinkTime, deadline);
+      this.emitThinkingPhaseUnshuffled(game, question, game.settings.thinkTime, deadline);
     }
     this.timerManager.setThinkingPhaseTimer(game.id, () => {
       this.executePhase(game, 'answering');
@@ -360,7 +378,10 @@ export class GameplayLoop {
     if (stats) {
       const correctAnswerCount = stats.answers.find(a => a.optionIndex === currentQuestion.correctAnswer)?.count || 0;
       console.log(`[PIN ${game.pin}] Results | Correct: ${correctAnswerCount}/${stats.totalPlayers}`);
-      this.io.to(game.id).emit('questionEnded', stats);
+      // Players: bare signal + their own result (which carries the answer key in their
+      // option order). Host: the full stats. The old room broadcast of `stats` shipped
+      // the answer key and every option's counts to 200 phones that never rendered them.
+      this.io.to(game.id).emit('questionEnded');
       const host = this.playerManager.getHost(game);
       if (host && host.isConnected) {
         this.io.to(host.socketId).emit('hostResults', stats);
@@ -369,6 +390,9 @@ export class GameplayLoop {
         if (!player.isHost) {
           const personalResult = this.questionManager.getPersonalResult(game, player.id);
           if (personalResult) {
+            const view = this.playerManager.getShuffledQuestionForPlayer(game, player, currentQuestion);
+            personalResult.correctAnswer = view.correctAnswer;
+            if (view.correctAnswers) personalResult.correctAnswers = view.correctAnswers;
             this.io.to(player.socketId).emit('personalResult', personalResult);
           }
         }
@@ -491,8 +515,8 @@ export class GameplayLoop {
           if (remaining > 0) {
             // Shuffle to this specific player's permutation if shuffleAnswers is on.
             const player = isHost ? undefined : game.players.find((p) => p.socketId === socketId);
-            const q = (game.settings.shuffleAnswers && player && !isHost)
-              ? this.playerManager.getShuffledQuestionForPlayer(game, player, question)
+            const q = (player && !isHost)
+              ? this.playerManager.getQuestionForPlayer(game, player, question)
               : question;
             // Phase 6: include the deadline payload so the reconnecting client can compute
             // clock skew and qEpoch protects against stale submissions.
@@ -518,8 +542,8 @@ export class GameplayLoop {
           const thinkNow = Date.now();
           const thinkDeadline = thinkNow + game.settings.thinkTime * 1000;
           const player = isHost ? undefined : game.players.find((p) => p.socketId === socketId);
-          const q = (game.settings.shuffleAnswers && player && !isHost)
-            ? this.playerManager.getShuffledQuestionForPlayer(game, player, currentQuestion)
+          const q = (player && !isHost)
+            ? this.playerManager.getQuestionForPlayer(game, player, currentQuestion)
             : currentQuestion;
           this.io.to(socketId).emit('thinkingPhase', q, game.settings.thinkTime, {
             serverNow: thinkNow,

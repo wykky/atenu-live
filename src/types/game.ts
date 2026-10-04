@@ -135,6 +135,10 @@ export interface PersonalResult {
   streakBonus?: number;
   // +100 if this player was the earliest correct submitter on this question
   firstCorrectBonus?: number;
+  // The answer key, in THIS player's option order (shuffleAnswers), revealed only now.
+  // The thinkingPhase copy players receive has correctAnswer stripped (-1).
+  correctAnswer?: number;
+  correctAnswers?: number[];
 }
 
 /**
@@ -160,7 +164,9 @@ export interface ServerToClientEvents {
   questionStarted: (question: Question, timeLimit: number) => void;
   thinkingPhase: (question: Question, thinkTime: number, deadline?: PhaseDeadline) => void;
   answeringPhase: (answerTime: number, deadline?: PhaseDeadline) => void;
-  questionEnded: (stats: GameStats) => void;
+  // Bare "answering is over" signal for players. The full GameStats (which include the
+  // answer key) go to the host only via hostResults; each player gets personalResult.
+  questionEnded: () => void;
   hostResults: (stats: GameStats) => void;
   personalResult: (result: PersonalResult) => void;
   leaderboardShown: (leaderboard: Player[], game: Game) => void;
