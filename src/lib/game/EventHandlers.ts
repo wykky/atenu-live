@@ -13,6 +13,7 @@ import { PlayerManager } from './PlayerManager';
 import { QuestionManager } from './QuestionManager';
 import { GameplayLoop } from './GameplayLoop';
 import { issueHostToken, verifyHostToken, verifyPlayerToken } from './tokens';
+import { resolveSocketUserId, setSocketUserId, getSocketUserId } from './socket-auth';
 import {
   validateCreateGamePayload,
   validateJoinGamePayload,
@@ -54,6 +55,14 @@ export class EventHandlers {
   ) {}
 
   setupEventHandlers(): void {
+    // Resolve the NextAuth session once per handshake and pin it on socket.data. Skipped
+    // on connectionStateRecovery (skipMiddlewares) — socket.data is restored with the socket.
+    this.io.use((socket, next) => {
+      resolveSocketUserId(socket)
+        .then((id) => setSocketUserId(socket, id))
+        .catch(() => setSocketUserId(socket, null))
+        .finally(() => next());
+    });
     this.io.on('connection', (socket) => {
       // Connection-level rate limit: throttle new socket opens per IP. Reject the
       // socket entirely if exceeded — no events get wired up. This is the cheapest
@@ -63,14 +72,17 @@ export class EventHandlers {
         socket.disconnect(true);
         return;
       }
-      socket.on('createGame', (title, questions, settings, dbUserId, callback) => {
+      // The dbUserId argument clients still send is IGNORED — identity comes from the
+      // session cookie (socket.data.dbUserId). The slot stays in the protocol so older
+      // tabs keep working across the deploy.
+      socket.on('createGame', (title, questions, settings, _dbUserId, callback) => {
         if (!createGameIpLimiter.consume(ip)) {
           socket.emit('error', 'Slow down — too many quizzes created');
           return;
         }
-        this.handleCreateGame(socket, title, questions, settings, dbUserId, callback);
+        this.handleCreateGame(socket, title, questions, settings, getSocketUserId(socket), callback);
       });
-      socket.on('joinGame', (pin, playerName, persistentId, playerToken, dbUserId, callback) => {
+      socket.on('joinGame', (pin, playerName, persistentId, playerToken, _dbUserId, callback) => {
         // Per-IP cap absorbs the classroom-mass-join burst (capacity 250) while limiting
         // PIN enumeration sustained rate to ~5/sec. Earlier draft of this had a per-(IP, PIN)
         // cap too — dropped because real classrooms share an IP AND a PIN, so it just
@@ -80,7 +92,7 @@ export class EventHandlers {
           callback?.(false);
           return;
         }
-        this.handleJoinGame(socket, pin, playerName, persistentId, playerToken, dbUserId, callback);
+        this.handleJoinGame(socket, pin, playerName, persistentId, playerToken, getSocketUserId(socket), callback);
       });
       socket.on('validateGame', (gameId, auth, callback) => {
         if (!validateGameLimiter.consume(ip)) {
@@ -300,11 +312,8 @@ export class EventHandlers {
       socket.emit('error', err);
       return;
     }
-    // Phase 4B: dbUserId is trusted from client (session-derived). Wrong claim only
-    // mis-attributes ownership; can't impersonate other users in a way that elevates.
-    const trustedUserId = typeof dbUserId === 'string' && dbUserId.length > 0 && dbUserId.length <= 100 ? dbUserId : null;
     try {
-      const game = this.gameManager.createGame(socket.id, title, questions, settings, trustedUserId);
+      const game = this.gameManager.createGame(socket.id, title, questions, settings, dbUserId);
       const hostToken = issueHostToken(game.id, game.hostId);
       socket.join(game.id);
       this.gameManager.attachSocket(socket.id, game.id); // Phase 7
@@ -338,8 +347,7 @@ export class EventHandlers {
         callback?.(false);
         return;
       }
-      const trustedUserId = typeof dbUserId === 'string' && dbUserId.length > 0 && dbUserId.length <= 100 ? dbUserId : null;
-      const result = this.playerManager.joinGame(game, socket.id, playerName, persistentId, playerToken, trustedUserId);
+      const result = this.playerManager.joinGame(game, socket.id, playerName, persistentId, playerToken, dbUserId);
       if (result.success && result.game) {
         socket.join(result.game.id);
         this.gameManager.attachSocket(socket.id, result.game.id); // Phase 7

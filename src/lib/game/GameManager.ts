@@ -68,12 +68,20 @@ export class GameManager {
     this.games.set(gameId, game);
     this.gamesByPin.set(pin, gameId);
 
-    // Phase 4: persist
+    // Phase 4: persist. If the write fails with the host's user id (e.g. the users row
+    // is missing and the FK rejects it), retry with a null host — the game and its TSV
+    // must never be silently lost over an attribution problem.
     try {
       insertGame(game, hostUserId);
       upsertPlayer(gameId, game.players[0], hostUserId);
     } catch (e) {
-      console.error('[db] insertGame failed:', e);
+      console.error('[db] insertGame failed with host_user_id, retrying unattributed:', e);
+      try {
+        insertGame(game, null);
+        upsertPlayer(gameId, game.players[0], null);
+      } catch (e2) {
+        console.error('[db] insertGame failed (unattributed):', e2);
+      }
     }
 
     return game;
