@@ -55,6 +55,9 @@ interface GameState {
   game: Game | null;
   currentQuestion: Question | null;
   timeLeft: number;
+  // Phase deadline translated to THIS device's clock (server deadlineMs + measured offset).
+  // One interval recomputes timeLeft from it; see the timer effect in GamePage.
+  deadlineAt: number | null;
   phase: 'thinking' | 'answering';
   // Multi-select: array of indices the player picked. Single-select: single index. null before answering.
   selectedAnswer: number | number[] | null;
@@ -93,7 +96,7 @@ type GameAction =
   | { type: 'PERSONAL_RESULT'; payload: PersonalResult }
   | { type: 'SHOW_LEADERBOARD'; payload: { leaderboard: Player[]; game: Game } }
   | { type: 'GAME_FINISHED'; payload: Player[] }
-  | { type: 'TICK_TIMER' }
+  | { type: 'SET_TIME_LEFT'; payload: number }
   | { type: 'GAME_STARTED'; payload: Game }
   | { type: 'RECONNECT_SYNC'; payload: Game }
   | { type: 'ANSWER_REJECTED'; payload: string }
@@ -127,15 +130,11 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, game: g, gameStatus, hostReconnecting: false };
     }
     case 'START_THINKING_PHASE': {
-      // Phase 6: derive timeLeft from server's absolute deadline if available, fall back to thinkTime
-      let timeLeft = action.payload.thinkTime;
-      if (action.payload.deadline) {
-        const skew = Date.now() - action.payload.deadline.serverNow;
-        timeLeft = Math.max(0, Math.ceil((action.payload.deadline.deadlineMs + skew - Date.now()) / 1000));
-      }
+      const { deadlineAt, timeLeft } = localDeadline(action.payload.deadline, action.payload.thinkTime);
       return {
         ...state,
         currentQuestion: action.payload.question,
+        deadlineAt,
         timeLeft,
         phase: 'thinking',
         selectedAnswer: null,
@@ -149,13 +148,10 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
     case 'START_ANSWERING_PHASE': {
-      let timeLeft = action.payload.answerTime;
-      if (action.payload.deadline) {
-        const skew = Date.now() - action.payload.deadline.serverNow;
-        timeLeft = Math.max(0, Math.ceil((action.payload.deadline.deadlineMs + skew - Date.now()) / 1000));
-      }
+      const { deadlineAt, timeLeft } = localDeadline(action.payload.deadline, action.payload.answerTime);
       return {
         ...state,
+        deadlineAt,
         timeLeft,
         phase: 'answering',
         gameStatus: 'answering',
@@ -187,8 +183,8 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     case 'GAME_FINISHED':
       return { ...state, finalScores: action.payload, gameStatus: 'finished' };
-    case 'TICK_TIMER':
-      return { ...state, timeLeft: Math.max(0, state.timeLeft - 1) };
+    case 'SET_TIME_LEFT':
+      return state.timeLeft === action.payload ? state : { ...state, timeLeft: action.payload };
     case 'HOST_RECONNECTING':
       return { ...state, hostReconnecting: action.payload };
     case 'ANSWER_REJECTED':
@@ -205,10 +201,31 @@ function gameReducer(state: GameState, action: GameAction): GameState {
   }
 }
 
+/**
+ * Clock offset between this device and the server, measured as the MINIMUM of
+ * (Date.now() - serverNow) over every PhaseDeadline received. Each sample is
+ * offset + one-way latency, so the minimum is the tightest estimate: a slow 3G
+ * packet inflates a single sample but never lowers the floor. Module-level so it
+ * survives re-renders and reconnects within the tab.
+ */
+let clockOffsetMs: number | null = null;
+
+function localDeadline(deadline: PhaseDeadline | undefined, fallbackSeconds: number): { deadlineAt: number; timeLeft: number } {
+  const now = Date.now();
+  if (!deadline) {
+    return { deadlineAt: now + fallbackSeconds * 1000, timeLeft: fallbackSeconds };
+  }
+  const sample = now - deadline.serverNow;
+  clockOffsetMs = clockOffsetMs === null ? sample : Math.min(clockOffsetMs, sample);
+  const deadlineAt = deadline.deadlineMs + clockOffsetMs;
+  return { deadlineAt, timeLeft: Math.max(0, Math.ceil((deadlineAt - now) / 1000)) };
+}
+
 const initialState: GameState = {
   game: null,
   currentQuestion: null,
   timeLeft: 0,
+  deadlineAt: null,
   phase: 'thinking',
   selectedAnswer: null,
   hasAnswered: false,
@@ -364,13 +381,22 @@ export default function GamePage() {
     };
   }, [gameId, isHost, router]);
 
+  // One interval per phase, recomputing timeLeft from the absolute local deadline. The
+  // previous effect depended on timeLeft and was torn down and rebuilt every second, so
+  // each tick inherited the scheduling drift of the one before it; on a slow link the
+  // phone's "0" could land hundreds of ms early and the last-second tap was never sent.
+  // SET_TIME_LEFT is a no-op when the integer second hasn't changed, so 250 ms polling
+  // costs no re-renders.
   useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
-    if (state.timeLeft > 0 && (state.phase === 'thinking' || state.phase === 'answering')) {
-      timer = setInterval(() => dispatch({ type: 'TICK_TIMER' }), 1000);
-    }
-    return () => { if (timer) clearInterval(timer); };
-  }, [state.timeLeft, state.phase]);
+    const deadlineAt = state.deadlineAt;
+    if (deadlineAt === null || (state.gameStatus !== 'thinking' && state.gameStatus !== 'answering')) return;
+    const tick = () => {
+      dispatch({ type: 'SET_TIME_LEFT', payload: Math.max(0, Math.ceil((deadlineAt - Date.now()) / 1000)) });
+    };
+    tick();
+    const timer = setInterval(tick, 250);
+    return () => clearInterval(timer);
+  }, [state.deadlineAt, state.gameStatus]);
 
   useEffect(() => {
     if (!state.notice) return;
