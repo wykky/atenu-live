@@ -224,5 +224,13 @@ run_node \
   --think 8 --answer 10 \
   --description "Thirty hard questions on North Africa: Carthage, Leptis Magna and Timgad, the pyramids of Sudan and the meeting of the Niles at Khartoum, Mount Toubkal and the Qattara Depression, Al-Qarawiyyin and Fatima al-Fihri, the Suez Canal, Abu Simbel and Lake Nasser, Queen Dihya, Algerian independence, the Arab Spring, Naguib Mahfouz and Morocco's 2022 World Cup run. Written in simple English for high-school students."
 
+run_node \
+  --tsv "$(tsv_path asian-countries.tsv)" \
+  --slug asian-countries \
+  --title "Asian Countries: Capitals, Languages and Geography" \
+  --subject Geography --language en \
+  --think 8 --answer 10 \
+  --description "Thirty questions on Asia: capitals from Astana to Naypyidaw, the languages of Iran, Pakistan, Singapore and Afghanistan, and geography from Everest and the Yangtze to Lake Baikal, the Gobi and the Dead Sea. Written in simple English for high-school students."
+
 echo
 echo "✓ Library seeded. Visit https://live.atenu.org/library to verify."
