@@ -141,6 +141,14 @@ export interface PersonalResult {
   correctAnswers?: number[];
 }
 
+/** A player's own position on the mid-game leaderboard (sent on their socket only). */
+export interface PlayerStanding {
+  rank: number;      // tie-aware competition rank (1,1,3,...)
+  score: number;
+  total: number;     // number of ranked players
+  name: string;
+}
+
 /**
  * Phase 6: server-authoritative deadline protocol.
  * Server sends absolute deadline + its own clock so clients can compute skew
@@ -169,7 +177,11 @@ export interface ServerToClientEvents {
   questionEnded: () => void;
   hostResults: (stats: GameStats) => void;
   personalResult: (result: PersonalResult) => void;
+  // Host: the full ranked list. Players: the top LEADERBOARD_TOP_N only (plus their own
+  // standing via myStanding). `game` arrives with players: [] in this event.
   leaderboardShown: (leaderboard: Player[], game: Game) => void;
+  // Per-player, own socket: where THIS player stands after the question just scored.
+  myStanding: (standing: PlayerStanding) => void;
   gameFinished: (finalScores: Player[]) => void;
   playerJoined: (player: Player) => void;
   playerReconnected: (player: Player) => void;

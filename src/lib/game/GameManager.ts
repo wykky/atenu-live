@@ -223,7 +223,7 @@ export function toPublicPlayer(p: Player): Player {
   } as Player;
 }
 
-export function sanitizeGameForClient(game: Game): Game {
+export function sanitizeGameForClient(game: Game, opts: { players?: boolean } = {}): Game {
   return {
     ...game,
     answerHistory: [],
@@ -231,6 +231,7 @@ export function sanitizeGameForClient(game: Game): Game {
     totalQuestions: game.questions.length,
     // Never ship the raw roster: it carried every player's currentAnswer, answerTime and
     // socketId to every client (validateGame / joinGame callbacks, gameStarted, gameUpdated).
-    players: game.players.map(toPublicPlayer),
+    // Events that already carry a ranked list (leaderboardShown) pass players: false.
+    players: opts.players === false ? [] : game.players.map(toPublicPlayer),
   };
 }

@@ -5,7 +5,9 @@ import type {
   Game,
   GamePhase,
   Question,
-  PhaseDeadline
+  PhaseDeadline,
+  Player,
+  PlayerStanding
 } from '@/types/game';
 import { GameManager, sanitizeGameForClient, toPublicPlayer } from './GameManager';
 import { finishGame as dbFinishGame } from '@/lib/db';
@@ -28,6 +30,11 @@ export const ANSWER_GRACE_MS = 1000;
 
 // TimerManager key prefix for the per-socket "resync to answering" follow-up emit.
 const RESYNC_TIMER_PREFIX = 'resyncAnswering_';
+
+// Players see this many rows on the mid-game leaderboard (plus their own standing). The
+// host projector gets the full list. 200 Player rows x 200 phones was the single largest
+// per-question payload.
+export const LEADERBOARD_TOP_N = 10;
 
 // Host-only "N of M answered" progress: coalesce bursts to at most one emit per 250 ms.
 // 200 players answering inside 10 s used to mean 200 room broadcasts = 40k packets.
@@ -406,7 +413,23 @@ export class GameplayLoop {
     const leaderboard = this.playerManager.applyCompetitionRanks(this.playerManager.getLeaderboard(game));
     const topPlayer = leaderboard[0] || null;
     console.log(`[PIN ${game.pin}] Leaderboard | Top: ${topPlayer ? `${topPlayer.name} (${topPlayer.score})` : 'none'}`);
-    this.io.to(game.id).emit('leaderboardShown', leaderboard, sanitizeGameForClient(game));
+    const gameLite = sanitizeGameForClient(game, { players: false });
+    const host = this.playerManager.getHost(game);
+    const top = leaderboard.slice(0, LEADERBOARD_TOP_N).map(toPublicPlayer);
+    if (host && host.isConnected) {
+      this.io.to(host.socketId).emit('leaderboardShown', leaderboard.map(toPublicPlayer), gameLite);
+      this.io.to(game.id).except(host.socketId).emit('leaderboardShown', top, gameLite);
+    } else {
+      this.io.to(game.id).emit('leaderboardShown', top, gameLite);
+    }
+    leaderboard.forEach((p) => {
+      if (!p.isConnected) return;
+      this.io.to(p.socketId).emit('myStanding', this.standingFor(p, leaderboard.length));
+    });
+  }
+
+  private standingFor(p: Player, total: number): PlayerStanding {
+    return { rank: p.rank ?? 0, score: p.score, total, name: p.name };
   }
 
   private executeFinishedPhase(game: Game): void {
@@ -576,7 +599,14 @@ export class GameplayLoop {
       }
       case 'leaderboard': {
         const leaderboard = this.playerManager.applyCompetitionRanks(this.playerManager.getLeaderboard(game));
-        this.io.to(socketId).emit('leaderboardShown', leaderboard, sanitizeGameForClient(game));
+        const gameLite = sanitizeGameForClient(game, { players: false });
+        if (isHost) {
+          this.io.to(socketId).emit('leaderboardShown', leaderboard.map(toPublicPlayer), gameLite);
+        } else {
+          this.io.to(socketId).emit('leaderboardShown', leaderboard.slice(0, LEADERBOARD_TOP_N).map(toPublicPlayer), gameLite);
+          const me = game.players.find((p) => p.socketId === socketId);
+          if (me && !me.isHost) this.io.to(socketId).emit('myStanding', this.standingFor(me, leaderboard.length));
+        }
         break;
       }
       case 'finished': {

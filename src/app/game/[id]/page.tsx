@@ -4,7 +4,7 @@ import { useEffect, useReducer, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { getSocket } from '@/lib/socket-client';
 import { getPlayerCreds } from '@/lib/player-storage';
-import type { Game, Question, GameStats, Player, PersonalResult, GamePhase, PhaseDeadline } from '@/types/game';
+import type { Game, Question, GameStats, Player, PersonalResult, GamePhase, PhaseDeadline, PlayerStanding } from '@/types/game';
 // Game Screen Components
 import GameValidationScreen from '@/components/game-screens/GameValidationScreen';
 import GameErrorScreen from '@/components/game-screens/GameErrorScreen';
@@ -72,6 +72,8 @@ interface GameState {
   notice: string | null;
   // Host only: "N of M connected players have answered" for the current question.
   answeredCount: { answered: number; total: number } | null;
+  // Player only: own rank/score on the mid-game leaderboard (players get top-N + this).
+  myStanding: PlayerStanding | null;
   // 0-based index of the question currently in play, taken from the phase deadline.
   // Do NOT read game.currentQuestionIndex for this: the Game object is only
   // re-broadcast on gameStarted / leaderboardShown, so during play it lags a
@@ -96,6 +98,7 @@ type GameAction =
   | { type: 'RECONNECT_SYNC'; payload: Game }
   | { type: 'ANSWER_REJECTED'; payload: string }
   | { type: 'ANSWERED_COUNT'; payload: { answered: number; total: number } }
+  | { type: 'MY_STANDING'; payload: PlayerStanding }
   | { type: 'CLEAR_NOTICE' }
   | { type: 'HOST_RECONNECTING'; payload: boolean };
 
@@ -193,6 +196,8 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, notice: action.payload, hasAnswered: false, selectedAnswer: null };
     case 'ANSWERED_COUNT':
       return { ...state, answeredCount: action.payload };
+    case 'MY_STANDING':
+      return { ...state, myStanding: action.payload };
     case 'CLEAR_NOTICE':
       return state.notice === null ? state : { ...state, notice: null };
     default:
@@ -218,6 +223,7 @@ const initialState: GameState = {
   qEpoch: null,
   notice: null,
   answeredCount: null,
+  myStanding: null,
   questionIndex: null,
 };
 
@@ -307,6 +313,7 @@ export default function GamePage() {
     socket.on('leaderboardShown', (leaderboardData: Player[], gameData: Game) =>
       dispatch({ type: 'SHOW_LEADERBOARD', payload: { leaderboard: leaderboardData, game: gameData } })
     );
+    socket.on('myStanding', (standing: PlayerStanding) => dispatch({ type: 'MY_STANDING', payload: standing }));
     socket.on('gameFinished', (scores: Player[]) => dispatch({ type: 'GAME_FINISHED', payload: scores }));
     socket.on('playerAnswered', (answered: number, total: number) =>
       dispatch({ type: 'ANSWERED_COUNT', payload: { answered, total } })
@@ -345,6 +352,7 @@ export default function GamePage() {
       socket.off('hostResults');
       socket.off('personalResult');
       socket.off('leaderboardShown');
+      socket.off('myStanding');
       socket.off('gameFinished');
       socket.off('playerAnswered');
       socket.off('gameLogs');
@@ -468,7 +476,7 @@ export default function GamePage() {
   // GameFallbackScreen and just see "Waiting for the host...", even though the
   // server already broadcast the leaderboard to them.
   if (state.gameStatus === 'leaderboard') {
-    return <PlayerLeaderboardScreen leaderboard={state.leaderboard} game={state.game} />;
+    return <PlayerLeaderboardScreen leaderboard={state.leaderboard} game={state.game} me={state.myStanding} />;
   }
   if (state.gameStatus === 'finished') {
     return (

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getGradient } from '@/lib/palette';
-import type { Player, Game } from '@/types/game';
+import type { Player, Game, PlayerStanding } from '@/types/game';
 
 import { getPlayerId } from '@/lib/player-storage';
 // Top 3 mid-game, not 5: on a phone, 5 rows plus the player's own row plus the
@@ -54,9 +54,12 @@ function Row({ player, rank, isMe }: { player: Player; rank: number; isMe: boole
 export default function PlayerLeaderboardScreen({
   leaderboard,
   game,
+  me: myStanding = null,
 }: {
+  // Top-N rows only (the server trims for players); the player's own row comes via `me`.
   leaderboard: Player[];
   game: Game | null;
+  me?: PlayerStanding | null;
 }) {
   // localStorage is read after mount to keep server and first client render identical.
   const [myId, setMyId] = useState<string | null>(null);
@@ -71,7 +74,13 @@ export default function PlayerLeaderboardScreen({
     .filter((p) => !p.isHost)
     .map((p, i) => ({ player: p, rank: p.rank ?? i + 1 }));
   const top = players.slice(0, TOP_N);
-  const me = myId ? players.find((e) => e.player.id === myId) : undefined;
+  const meInList = myId ? players.find((e) => e.player.id === myId) : undefined;
+  // Own standing: from the trimmed list if we are in it, else from the per-socket
+  // myStanding payload (the server no longer sends 200 rows to every phone).
+  const me = meInList
+    ?? (myStanding && myId
+      ? { player: { id: myId, name: myStanding.name, score: myStanding.score, isHost: false, isConnected: true } as Player, rank: myStanding.rank }
+      : undefined);
   const meOutsideTop = me && !top.some((e) => e.player.id === me.player.id) ? me : undefined;
 
   const total = game?.totalQuestions ?? 0;
