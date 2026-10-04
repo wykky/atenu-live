@@ -114,14 +114,8 @@ export class EventHandlers {
         });
       });
       socket.on('submitAnswer', (gameId, questionId, answer, persistentId, playerToken, qEpoch, clientPerceivedMs) => {
-        // Keyed per playerId, not IP — one classroom IP has 200 players each
-        // submitting one answer per question. The per-player burst (8) handles a
-        // mis-click flurry; the refill (~2/s) caps any sustained spam.
-        if (typeof persistentId === 'string' && !submitAnswerLimiter.consume(persistentId)) {
-          // Silent drop — submitAnswer already silently ignores duplicate answers,
-          // so the user sees the same UX (no error event).
-          return;
-        }
+        // Rate limiting happens INSIDE handleSubmitAnswer, after the playerToken is
+        // verified, keyed by the verified player id (see rate-limit.ts).
         this.handleSubmitAnswer(socket, gameId, questionId, answer, persistentId, playerToken, qEpoch, clientPerceivedMs);
       });
       socket.on('nextQuestion', (gameId, hostToken) => {
@@ -500,6 +494,12 @@ export class EventHandlers {
       }
       const player = this.playerManager.getPlayerById(persistentId, game);
       if (!player || player.isHost) return;
+
+      // Keyed per verified player, not IP — one classroom IP has 200 players each
+      // submitting one answer per question. The per-player burst (8) handles a
+      // mis-click flurry; the refill (~2/s) caps any sustained spam. Silent drop:
+      // duplicates are silently ignored too, so the UX is unchanged.
+      if (!submitAnswerLimiter.consume(player.id)) return;
 
       const reject = (code: string, message: string) => {
         console.warn(`[SUBMIT_ANSWER] Rejected ${player.name} (${code}) PIN ${game.pin} phase=${game.phase} qEpoch=${String(qEpoch)}/${game.qEpoch}`);

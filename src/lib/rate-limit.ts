@@ -47,6 +47,8 @@ class TokenBucket {
 const MAX_BUCKETS_PER_LIMITER = 50_000;
 // Throttle per-key warn logs so a sustained attack doesn't spam stdout.
 const PER_KEY_LOG_COOLDOWN_MS = 60_000;
+// Hard cap on the per-key log-cooldown map (pruned every 60 s; cleared if still above).
+const MAX_BREACH_LOG_ENTRIES = 10_000;
 
 export class RateLimiter {
   private buckets = new Map<string, TokenBucket>();
@@ -84,7 +86,21 @@ export class RateLimiter {
   reportAndReset(): { name: string; breaches: number; bucketCount: number } {
     const r = { name: this.name, breaches: this.breachCount, bucketCount: this.buckets.size };
     this.breachCount = 0;
+    this.pruneBreachLog();
     return r;
+  }
+
+  /**
+   * firstBreachLogged grew by one entry per blocked key and was never trimmed, so a PIN
+   * scan from many IPs leaked memory for the life of the process. Called from the 60 s
+   * summary tick: drop entries past their cooldown, and hard-cap the map as a backstop.
+   */
+  private pruneBreachLog(): void {
+    const cutoff = Date.now() - PER_KEY_LOG_COOLDOWN_MS;
+    for (const [key, at] of this.firstBreachLogged) {
+      if (at < cutoff) this.firstBreachLogged.delete(key);
+    }
+    if (this.firstBreachLogged.size > MAX_BREACH_LOG_ENTRIES) this.firstBreachLogged.clear();
   }
 }
 
@@ -102,7 +118,8 @@ export const joinGameIpLimiter    = new RateLimiter('joinGame.ip',     { capacit
 // createGame: 5 per IP / min — accounts have already been gated to signed-in hosts elsewhere.
 export const createGameIpLimiter  = new RateLimiter('createGame.ip',   { capacity: 5,  refillIntervalMs: 60_000 });
 
-// submitAnswer: 8 burst, ~2/sec sustained, keyed per player. Even fast clickers stay well under.
+// submitAnswer: 8 burst, ~2/sec sustained, keyed per VERIFIED player id (consumed after the
+// playerToken check, so a stranger cannot drain a real player's bucket by spoofing their id).
 export const submitAnswerLimiter  = new RateLimiter('submitAnswer',    { capacity: 8,  refillIntervalMs: 500 });
 
 // validateGame: same shape as joinGame. Every player calls this once per /game/[id] load AND
