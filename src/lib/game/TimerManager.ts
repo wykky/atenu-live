@@ -49,6 +49,15 @@ export class TimerManager {
     return true;
   }
 
+  /** Clear every timer of a game whose type starts with `prefix` (per-socket resync timers). */
+  clearTimersWithPrefix(gameId: string, prefix: string): void {
+    const gameTimers = this.timers.get(gameId);
+    if (!gameTimers) return;
+    for (const type of Array.from(gameTimers.keys())) {
+      if (type.startsWith(prefix)) this.clearTimer(gameId, type);
+    }
+  }
+
   clearAllTimers(gameId: string): void {
     const gameTimers = this.timers.get(gameId);
     if (!gameTimers) return;

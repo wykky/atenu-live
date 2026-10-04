@@ -24,6 +24,9 @@ const IDLE_SWEEP_INTERVAL_MS = 5 * 60_000; // check every 5 minutes
 // This compensates for Ethiopian 3G/4G round-trip latency without enabling meaningful cheating.
 export const ANSWER_GRACE_MS = 1000;
 
+// TimerManager key prefix for the per-socket "resync to answering" follow-up emit.
+const RESYNC_TIMER_PREFIX = 'resyncAnswering_';
+
 export class GameplayLoop {
   private phaseCallbacks: Map<string, (() => void) | null> = new Map();
   private hostDisconnectTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -243,6 +246,7 @@ export class GameplayLoop {
 
   private executePhase(game: Game, phase: GamePhase): void {
     console.log(`[PIN ${game.pin}] Phase: ${phase} | Question: ${game.currentQuestionIndex + 1}/${game.questions.length} | Players: ${game.players.filter(p => !p.isHost && p.isConnected).length}`);
+    this.timerManager.clearTimersWithPrefix(game.id, RESYNC_TIMER_PREFIX);
     this.gameManager.updateGamePhase(game.id, phase);
     game.phaseStartTime = Date.now();
     this.gameManager.markActive(game.id); // Phase 5: idle GC
@@ -482,8 +486,14 @@ export class GameplayLoop {
             qEpoch: game.qEpoch ?? 0,
             questionIndex: game.currentQuestionIndex,
           });
-          const delay = isHost ? 2000 : 100;
-          setTimeout(() => {
+          // The follow-up answeringPhase emit is deferred so the client processes the
+          // thinkingPhase first. It is registered with TimerManager (cleared on any phase
+          // transition) AND re-checks phase + qEpoch when it fires: an unguarded emit
+          // landing after 'results' left the host stuck on the answering screen.
+          const qEpochAtSync = game.qEpoch ?? 0;
+          const delay = isHost ? 250 : 100;
+          this.timerManager.setTimer(game.id, `${RESYNC_TIMER_PREFIX}${socketId}`, () => {
+            if (game.phase !== 'answering' || (game.qEpoch ?? 0) !== qEpochAtSync) return;
             const now = Date.now();
             const deadlineMs = (game.questionStartTime || now) + game.settings.answerTime * 1000;
             const remaining = Math.max(0, Math.floor((deadlineMs - now) / 1000));
@@ -491,7 +501,7 @@ export class GameplayLoop {
               this.io.to(socketId).emit('answeringPhase', remaining, {
                 serverNow: now,
                 deadlineMs,
-                qEpoch: game.qEpoch ?? 0,
+                qEpoch: qEpochAtSync,
                 questionIndex: game.currentQuestionIndex,
               });
             }
