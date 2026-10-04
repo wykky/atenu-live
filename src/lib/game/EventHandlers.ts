@@ -474,7 +474,7 @@ export class EventHandlers {
     answer: number | number[],
     persistentId: string,
     playerToken: string,
-    qEpoch?: number,
+    qEpoch: unknown,
     clientPerceivedMs?: number
   ): void {
     const err = validateSubmitAnswerPayload(gameId, questionId, answer, persistentId);
@@ -492,9 +492,33 @@ export class EventHandlers {
       const player = this.playerManager.getPlayerById(persistentId, game);
       if (!player || player.isHost) return;
 
-      // Phase 6: qEpoch check — stale answers from a previous question are rejected
-      if (typeof qEpoch === 'number' && game.qEpoch !== undefined && qEpoch !== game.qEpoch) {
-        console.warn(`[SUBMIT_ANSWER] Rejected from ${socket.id}: stale qEpoch ${qEpoch} (current ${game.qEpoch}) PIN ${game.pin}`);
+      const reject = (code: string, message: string) => {
+        console.warn(`[SUBMIT_ANSWER] Rejected ${player.name} (${code}) PIN ${game.pin} phase=${game.phase} qEpoch=${String(qEpoch)}/${game.qEpoch}`);
+        socket.emit('answerRejected', message);
+      };
+
+      // qEpoch is REQUIRED: it is the only thing tying the answer to the phase the client
+      // actually saw. A stale epoch means a previous question, a pre-pause phase, or a
+      // client that never received answeringPhase.
+      if (typeof qEpoch !== 'number' || !Number.isFinite(qEpoch)) {
+        reject('missing_epoch', 'Your answer could not be matched to the current question.');
+        return;
+      }
+      if (qEpoch !== (game.qEpoch ?? 0)) {
+        reject('stale_epoch', 'That question has moved on — your answer was not counted.');
+        return;
+      }
+      // Paused for host disconnect: resume shifts questionStartTime forward, so an answer
+      // accepted now would be scored as if it took ~0 ms (full 1000 points).
+      if (game.pausedPhase) {
+        reject('paused', 'The game is paused while the host reconnects. Answer again when the timer restarts.');
+        return;
+      }
+      // Already scored (results phase entered early because everyone connected answered, or
+      // the final safety-net scoring ran). A late answer here would be stored as 0 points
+      // with wasCorrect=true — wrong on both counts.
+      if (game.scoredQuestions?.includes(game.currentQuestionIndex)) {
+        reject('already_scored', 'Too late — this question has already been scored.');
         return;
       }
 
@@ -506,6 +530,7 @@ export class EventHandlers {
         game.answerDeadlineMs !== undefined &&
         now <= game.answerDeadlineMs;
       if (!withinAnswering && !withinGrace) {
+        reject('closed', 'Answering is closed for this question.');
         return;
       }
 

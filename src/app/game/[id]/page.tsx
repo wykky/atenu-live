@@ -68,6 +68,8 @@ interface GameState {
   isValidating: boolean;
   hostReconnecting: boolean;
   qEpoch: number | null; // Phase 6: stale-answer guard
+  // Short transient message for the player (e.g. why an answer was refused). Auto-cleared.
+  notice: string | null;
   // 0-based index of the question currently in play, taken from the phase deadline.
   // Do NOT read game.currentQuestionIndex for this: the Game object is only
   // re-broadcast on gameStarted / leaderboardShown, so during play it lags a
@@ -90,6 +92,8 @@ type GameAction =
   | { type: 'TICK_TIMER' }
   | { type: 'GAME_STARTED'; payload: Game }
   | { type: 'RECONNECT_SYNC'; payload: Game }
+  | { type: 'ANSWER_REJECTED'; payload: string }
+  | { type: 'CLEAR_NOTICE' }
   | { type: 'HOST_RECONNECTING'; payload: boolean };
 
 function gameReducer(state: GameState, action: GameAction): GameState {
@@ -173,6 +177,11 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, timeLeft: Math.max(0, state.timeLeft - 1) };
     case 'HOST_RECONNECTING':
       return { ...state, hostReconnecting: action.payload };
+    case 'ANSWER_REJECTED':
+      // Un-grey the buttons: if the phase is still (or becomes) open the player can retry.
+      return { ...state, notice: action.payload, hasAnswered: false, selectedAnswer: null };
+    case 'CLEAR_NOTICE':
+      return state.notice === null ? state : { ...state, notice: null };
     default:
       return state;
   }
@@ -194,6 +203,7 @@ const initialState: GameState = {
   isValidating: true,
   hostReconnecting: false,
   qEpoch: null,
+  notice: null,
   questionIndex: null,
 };
 
@@ -302,6 +312,7 @@ export default function GamePage() {
     });
     socket.on('hostReconnecting', () => dispatch({ type: 'HOST_RECONNECTING', payload: true }));
     socket.on('hostReconnected', () => dispatch({ type: 'HOST_RECONNECTING', payload: false }));
+    socket.on('answerRejected', (reason: string) => dispatch({ type: 'ANSWER_REJECTED', payload: reason }));
     socket.on('kicked', (reason: string) => {
       // Phase 7: another device claimed this player's identity. Show msg + bounce home.
       alert('You were signed in from another device.');
@@ -324,6 +335,7 @@ export default function GamePage() {
       socket.off('waitForNextQuestion');
       socket.off('hostReconnecting');
       socket.off('hostReconnected');
+      socket.off('answerRejected');
       socket.off('kicked');
     };
   }, [gameId, isHost, router]);
@@ -336,8 +348,27 @@ export default function GamePage() {
     return () => { if (timer) clearInterval(timer); };
   }, [state.timeLeft, state.phase]);
 
+  useEffect(() => {
+    if (!state.notice) return;
+    const t = setTimeout(() => dispatch({ type: 'CLEAR_NOTICE' }), 4000);
+    return () => clearTimeout(t);
+  }, [state.notice]);
+
+  const notice = state.notice ? (
+    <div
+      role="status"
+      className="fixed top-3 left-1/2 -translate-x-1/2 z-[60] max-w-[92vw] px-4 py-2 rounded-lg bg-black/85 text-white text-sm shadow-lg"
+    >
+      {state.notice}
+    </div>
+  ) : null;
+
   const submitAnswer = (answer: number | number[]) => {
     if (state.hasAnswered || !state.currentQuestion || state.phase !== 'answering') return;
+    if (state.qEpoch === null) {
+      console.warn('[submitAnswer] no qEpoch yet — answeringPhase not received');
+      return;
+    }
     dispatch({ type: 'SUBMIT_ANSWER', payload: { answer } });
     if (!gameId) return;
     const creds = getPlayerCreds(gameId);
@@ -359,7 +390,7 @@ export default function GamePage() {
       answer,
       persistentId,
       playerToken,
-      state.qEpoch ?? undefined,
+      state.qEpoch,
       clientPerceivedMs
     );
   };
@@ -449,11 +480,12 @@ export default function GamePage() {
     );
   }
   if (state.gameStatus === 'waiting-results') {
-    return <GameWaitingForResultsScreen isHost={isHost} />;
+    return <>{notice}<GameWaitingForResultsScreen isHost={isHost} /></>;
   }
   if (state.gameStatus === 'answering' && state.phase === 'answering' && state.currentQuestion) {
     return (
       <>
+        {notice}
         <GameAnsweringPhaseScreen
           currentQuestion={state.currentQuestion}
           timeLeft={state.timeLeft}
@@ -470,6 +502,8 @@ export default function GamePage() {
   }
   if (state.gameStatus === 'results') {
     return (
+      <>
+      {notice}
       <GameResultsPhaseScreen
         isHost={isHost}
         isPlayer={isPlayer}
@@ -480,6 +514,7 @@ export default function GamePage() {
         selectedAnswer={state.selectedAnswer}
         game={state.game}
       />
+      </>
     );
   }
   return <GameFallbackScreen />;

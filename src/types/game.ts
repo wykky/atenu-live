@@ -180,6 +180,9 @@ export interface ServerToClientEvents {
   hostReconnected: () => void;
   // Phase 7: emitted to a socket that's being kicked because the same playerId connected from elsewhere
   kicked: (reason: string) => void;
+  // Ack to the submitting socket when its submitAnswer was refused (paused, stale, too late...).
+  // Lets the phone un-grey its buttons and show a short message instead of silently losing the tap.
+  answerRejected: (reason: string) => void;
 }
 
 // Auth for validateGame — caller may identify as host (with hostToken) or returning player (with playerId + playerToken).
@@ -218,7 +221,8 @@ export interface ClientToServerEvents {
     answer: number | number[],
     persistentId: string,
     playerToken: string,
-    qEpoch?: number,
+    // Required: the qEpoch from the answeringPhase deadline the client is answering under.
+    qEpoch: number,
     clientPerceivedMs?: number
   ) => void;
   nextQuestion: (gameId: string, hostToken: string) => void;
