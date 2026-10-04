@@ -20,6 +20,29 @@ const DB_PATH = process.env.ATENU_DB_PATH || '/app/data/atenu.db';
 
 let db: Database.Database | null = null;
 
+/**
+ * Lazily prepared, cached statement for the hot per-answer / per-score paths. Each call
+ * used to run db.prepare() again (SQL parse + plan) — 200 players x 30 questions = 6,000
+ * compiles per game for insertAnswer alone. Re-prepares if the Database instance changes.
+ */
+function prepared(sql: string): () => Database.Statement {
+  let stmt: Database.Statement | undefined;
+  let owner: Database.Database | null = null;
+  return () => {
+    const d = getDb();
+    if (!stmt || owner !== d) {
+      stmt = d.prepare(sql);
+      owner = d;
+    }
+    return stmt;
+  };
+}
+
+/** Run `fn` inside one SQLite transaction (better-sqlite3 transactions are synchronous). */
+export function runInTransaction<T>(fn: () => T): T {
+  return getDb().transaction(fn)();
+}
+
 function getDb(): Database.Database {
   if (db) return db;
   mkdirSync(dirname(DB_PATH), { recursive: true });
@@ -313,25 +336,25 @@ export function getUserById(id: string): DbUser | undefined {
 // GAMES
 // ============================================================================
 
+const insertGameStmt = prepared(
+  `INSERT OR REPLACE INTO games (
+    id, pin, host_user_id, host_player_id, title, settings_json, status,
+    current_question_index, player_count, question_count, created_at,
+    started_at, finished_at, tsv_data
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
+const insertQuestionStmt = prepared(
+  `INSERT OR REPLACE INTO questions (
+    game_id, question_index, id, text, options_json, correct_answer, time_limit, explanation, image_url,
+    question_type, correct_answers
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
+
 export function insertGame(game: Game, hostUserId: string | null): void {
   const d = getDb();
   const now = Date.now();
-  const insertGameStmt = d.prepare(
-    `INSERT OR REPLACE INTO games (
-      id, pin, host_user_id, host_player_id, title, settings_json, status,
-      current_question_index, player_count, question_count, created_at,
-      started_at, finished_at, tsv_data
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
-  const insertQuestionStmt = d.prepare(
-    `INSERT OR REPLACE INTO questions (
-      game_id, question_index, id, text, options_json, correct_answer, time_limit, explanation, image_url,
-      question_type, correct_answers
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
-
   const tx = d.transaction(() => {
-    insertGameStmt.run(
+    insertGameStmt().run(
       game.id,
       game.pin,
       hostUserId,
@@ -348,7 +371,7 @@ export function insertGame(game: Game, hostUserId: string | null): void {
       null
     );
     game.questions.forEach((q, idx) => {
-      insertQuestionStmt.run(
+      insertQuestionStmt().run(
         game.id,
         idx,
         q.id,
@@ -366,36 +389,38 @@ export function insertGame(game: Game, hostUserId: string | null): void {
   tx();
 }
 
+const updateGameStatusStmt = prepared(
+  'UPDATE games SET status = ?, current_question_index = ?, started_at = COALESCE(started_at, CASE WHEN status = ? THEN NULL ELSE ? END) WHERE id = ?'
+);
 export function updateGameStatus(gameId: string, status: string, currentQuestionIndex: number): void {
-  getDb()
-    .prepare('UPDATE games SET status = ?, current_question_index = ?, started_at = COALESCE(started_at, CASE WHEN status = ? THEN NULL ELSE ? END) WHERE id = ?')
-    .run(status, currentQuestionIndex, 'waiting', Date.now(), gameId);
+  updateGameStatusStmt().run(status, currentQuestionIndex, 'waiting', Date.now(), gameId);
 }
 
+const finishGameStmt = prepared('UPDATE games SET status = ?, finished_at = ?, tsv_data = ?, player_count = ? WHERE id = ?');
+const updateFinalScoreStmt = prepared('UPDATE players SET final_score = ? WHERE id = ? AND game_id = ?');
 export function finishGame(gameId: string, tsvData: string, finalPlayers: Player[]): void {
-  const d = getDb();
   const now = Date.now();
-  const tx = d.transaction(() => {
-    d.prepare('UPDATE games SET status = ?, finished_at = ?, tsv_data = ?, player_count = ? WHERE id = ?').run(
+  runInTransaction(() => {
+    finishGameStmt().run(
       'finished',
       now,
       tsvData,
       finalPlayers.filter((p) => !p.isHost).length,
       gameId
     );
-    const updPlayer = d.prepare('UPDATE players SET final_score = ? WHERE id = ? AND game_id = ?');
-    finalPlayers.forEach((p) => updPlayer.run(p.score, p.id, gameId));
+    finalPlayers.forEach((p) => updateFinalScoreStmt().run(p.score, p.id, gameId));
   });
-  tx();
 }
 
+const getGameTsvStmt = prepared('SELECT tsv_data FROM games WHERE id = ?');
 export function getGameTsv(gameId: string): string | null {
-  const row = getDb().prepare('SELECT tsv_data FROM games WHERE id = ?').get(gameId) as { tsv_data: string | null } | undefined;
+  const row = getGameTsvStmt().get(gameId) as { tsv_data: string | null } | undefined;
   return row?.tsv_data ?? null;
 }
 
+const getGamePinStmt = prepared('SELECT pin FROM games WHERE id = ?');
 export function getGamePin(gameId: string): string | null {
-  const row = getDb().prepare('SELECT pin FROM games WHERE id = ?').get(gameId) as { pin: string } | undefined;
+  const row = getGamePinStmt().get(gameId) as { pin: string } | undefined;
   return row?.pin ?? null;
 }
 
@@ -475,17 +500,16 @@ export function deleteOldGames(days: number): number {
 // PLAYERS
 // ============================================================================
 
+const upsertPlayerStmt = prepared(
+  `INSERT OR REPLACE INTO players (
+    id, game_id, user_id, name, final_score, is_host, has_dyslexia_support, joined_at
+  ) VALUES (
+    ?, ?, ?, ?, ?, ?, ?,
+    COALESCE((SELECT joined_at FROM players WHERE id = ? AND game_id = ?), ?)
+  )`
+);
 export function upsertPlayer(gameId: string, player: Player, userId: string | null): void {
-  getDb()
-    .prepare(
-      `INSERT OR REPLACE INTO players (
-        id, game_id, user_id, name, final_score, is_host, has_dyslexia_support, joined_at
-      ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?,
-        COALESCE((SELECT joined_at FROM players WHERE id = ? AND game_id = ?), ?)
-      )`
-    )
-    .run(
+  upsertPlayerStmt().run(
       player.id,
       gameId,
       userId,
@@ -500,27 +524,26 @@ export function upsertPlayer(gameId: string, player: Player, userId: string | nu
 }
 
 export function updatePlayerScore(gameId: string, playerId: string, score: number): void {
-  getDb().prepare('UPDATE players SET final_score = ? WHERE id = ? AND game_id = ?').run(score, playerId, gameId);
+  updateFinalScoreStmt().run(score, playerId, gameId);
 }
 
 // ============================================================================
 // ANSWERS
 // ============================================================================
 
+const insertAnswerStmt = prepared(
+  `INSERT OR REPLACE INTO answers (
+    game_id, player_id, question_index, answer_index, answer_indices, answer_time,
+    response_time_ms, points_earned, was_correct, has_dyslexia_support
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
 export function insertAnswer(gameId: string, answer: AnswerRecord): void {
   // answerIndex carries either a single number (single-select), a comma-joined
   // string like "0,2" (multi-select), or null. INTEGER columns in SQLite accept
   // mixed types but querying gets messy, so split: keep answer_index INTEGER for
   // single-select, store the multi-select form in answer_indices TEXT.
   const isMulti = typeof answer.answerIndex === 'string';
-  getDb()
-    .prepare(
-      `INSERT OR REPLACE INTO answers (
-        game_id, player_id, question_index, answer_index, answer_indices, answer_time,
-        response_time_ms, points_earned, was_correct, has_dyslexia_support
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
+  insertAnswerStmt().run(
       gameId,
       answer.playerId,
       answer.questionIndex,

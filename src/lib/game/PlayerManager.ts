@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { Game, Player, Question } from '@/types/game';
+import type { Game, Player, Question, AnswerRecord } from '@/types/game';
 import { issuePlayerToken, verifyPlayerToken } from './tokens';
-import { upsertPlayer, insertAnswer, updatePlayerScore } from '@/lib/db';
+import { upsertPlayer, insertAnswer, updatePlayerScore, runInTransaction } from '@/lib/db';
 import {
   isMultiSelect,
   isAnswerCorrect,
@@ -352,6 +352,9 @@ export class PlayerManager {
     );
     correctPlayers.sort((a, b) => (a.answerTime ?? Infinity) - (b.answerTime ?? Infinity));
     const firstCorrectId = correctPlayers[0]?.id;
+    // DB writes are collected and flushed in ONE transaction below (one fsync instead of
+    // one per player; 200 players = 200 autocommits per question before).
+    const scoreWrites: Player[] = [];
 
     game.players.forEach((player) => {
       if (player.isHost) return;
@@ -378,7 +381,7 @@ export class PlayerManager {
         const streakTag = streakBonus > 0 ? ` [streak ${newStreak} +${streakBonus}]` : '';
         const firstTag = firstCorrectBonus > 0 ? ` [first +${firstCorrectBonus}]` : '';
         console.log(`[PIN ${game.pin}] ${player.name} +${totalEarned}${supportStatus}${usedClient ? ' [client-time]' : ''}${streakTag}${firstTag} | Total: ${player.score}`);
-        try { updatePlayerScore(game.id, player.id, player.score); } catch (e) { console.error('[db] updatePlayerScore failed:', e); }
+        scoreWrites.push(player);
       } else {
         // Wrong / no answer breaks the streak. Cache 0 so getPersonalResult shows
         // the +0 outcome consistently with TSV row.
@@ -388,6 +391,13 @@ export class PlayerManager {
         player.lastPointsEarned = 0;
       }
     });
+    if (scoreWrites.length > 0) {
+      try {
+        runInTransaction(() => {
+          scoreWrites.forEach((p) => updatePlayerScore(game.id, p.id, p.score));
+        });
+      } catch (e) { console.error('[db] updatePlayerScore batch failed:', e); }
+    }
   }
 
   storeAnswersToHistory(game: Game): void {
@@ -401,6 +411,7 @@ export class PlayerManager {
       return;
     }
     const questionStartTime = game.questionStartTime || Date.now();
+    const newRecords: AnswerRecord[] = [];
 
     game.players.forEach((player) => {
       if (player.isHost) return;
@@ -424,8 +435,13 @@ export class PlayerManager {
         hasDyslexiaSupport: player.hasDyslexiaSupport || false,
       };
       game.answerHistory.push(record);
-      try { insertAnswer(game.id, record); } catch (e) { console.error('[db] insertAnswer failed:', e); }
+      newRecords.push(record);
     });
+    if (newRecords.length > 0) {
+      try {
+        runInTransaction(() => { newRecords.forEach((r) => insertAnswer(game.id, r)); });
+      } catch (e) { console.error('[db] insertAnswer batch failed:', e); }
+    }
   }
 
   /**
