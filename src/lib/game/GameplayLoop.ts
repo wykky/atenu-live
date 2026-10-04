@@ -126,7 +126,13 @@ export class GameplayLoop {
     const t = setTimeout(() => {
       console.log(`[PIN ${game.pin}] Host did not reconnect within grace — finishing game`);
       this.hostDisconnectTimers.delete(game.id);
-      this.transitionToPhase(game, 'finished');
+      // In the lobby the loop is not running yet, and transitionToPhase is a no-op when
+      // gameLoopActive=false — the game would linger (and keep its PIN) until idle GC.
+      if (game.gameLoopActive) {
+        this.transitionToPhase(game, 'finished');
+      } else {
+        this.executeFinishedPhase(game);
+      }
     }, HOST_DISCONNECT_GRACE_MS);
     this.hostDisconnectTimers.set(game.id, t);
   }
