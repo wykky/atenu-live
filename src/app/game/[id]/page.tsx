@@ -354,8 +354,8 @@ export default function GamePage() {
     socket.on('hostReconnected', () => dispatch({ type: 'HOST_RECONNECTING', payload: false }));
     socket.on('answerRejected', (reason: string) => dispatch({ type: 'ANSWER_REJECTED', payload: reason }));
     socket.on('kicked', (reason: string) => {
-      // Phase 7: another device claimed this player's identity. Show msg + bounce home.
-      alert('You were signed in from another device.');
+      // Phase 7: the server says why (same identity from another device, removed by host...).
+      alert(reason || 'You were removed from the game.');
       console.warn('[client] kicked:', reason);
       router.push('/');
     });
