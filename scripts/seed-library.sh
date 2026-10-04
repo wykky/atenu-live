@@ -227,10 +227,10 @@ run_node \
 run_node \
   --tsv "$(tsv_path asian-countries.tsv)" \
   --slug asian-countries \
-  --title "Asian Countries: Capitals, Languages and Geography" \
+  --title "Asian Countries: Places, People and Culture" \
   --subject Geography --language en \
   --think 8 --answer 10 \
-  --description "Thirty questions on Asia: capitals from Astana to Naypyidaw, the languages of Iran, Pakistan, Singapore and Afghanistan, and geography from Everest and the Yangtze to Lake Baikal, the Gobi and the Dead Sea. Written in simple English for high-school students."
+  --description "Thirty questions on Asia: capitals and languages, the Caspian and Aral seas, taekwondo, the Taj Mahal, Nowruz and Bollywood, world records from the Burj Khalifa to Angkor Wat and the Great Wall, the Mongol Empire, Gandhi, Lee Kuan Yew and the first woman Prime Minister. Written in simple English for high-school students."
 
 echo
 echo "✓ Library seeded. Visit https://live.atenu.org/library to verify."
