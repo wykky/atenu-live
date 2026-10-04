@@ -221,5 +221,8 @@ export function sanitizeGameForClient(game: Game): Game {
     answerHistory: [],
     questions: [],
     totalQuestions: game.questions.length,
+    // Never ship the raw roster: it carried every player's currentAnswer, answerTime and
+    // socketId to every client (validateGame / joinGame callbacks, gameStarted, gameUpdated).
+    players: game.players.map(toPublicPlayer),
   };
 }

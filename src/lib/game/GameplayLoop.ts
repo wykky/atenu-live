@@ -5,7 +5,7 @@ import type {
   Game,
   GamePhase
 } from '@/types/game';
-import { GameManager, sanitizeGameForClient } from './GameManager';
+import { GameManager, sanitizeGameForClient, toPublicPlayer } from './GameManager';
 import { finishGame as dbFinishGame } from '@/lib/db';
 import { PlayerManager } from './PlayerManager';
 import { QuestionManager } from './QuestionManager';
@@ -392,7 +392,7 @@ export class GameplayLoop {
     const finalResults = this.playerManager.applyCompetitionRanks(this.playerManager.getFinalResults(game));
     const winner = finalResults[0] || null;
     console.log(`[PIN ${game.pin}] Game finished | Winner: ${winner ? `${winner.name} (${winner.score})` : 'none'}`);
-    this.io.to(game.id).emit('gameFinished', finalResults);
+    this.io.to(game.id).emit('gameFinished', finalResults.map(toPublicPlayer));
     this.stopGameLoop(game.id);
     // Phase 4: generate + persist TSV once, then drop from memory. Game stays in SQLite
     // for downloads / leaderboards until the 366-day retention sweep.
@@ -522,7 +522,7 @@ export class GameplayLoop {
       }
       case 'finished': {
         const finalResults = this.playerManager.applyCompetitionRanks(this.playerManager.getFinalResults(game));
-        this.io.to(socketId).emit('gameFinished', finalResults);
+        this.io.to(socketId).emit('gameFinished', finalResults.map(toPublicPlayer));
         break;
       }
       // waiting / preparation / results: nothing special to sync

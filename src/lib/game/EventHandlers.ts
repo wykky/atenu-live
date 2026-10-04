@@ -360,10 +360,11 @@ export class EventHandlers {
         const connectedPlayers = this.playerManager.getConnectedPlayers(result.game).length;
         console.log(`[PIN ${result.game.pin}] Player ${result.isReconnection ? 'reconnected' : 'joined'} | Connected: ${connectedPlayers}`);
         const player = this.playerManager.getPlayerById(result.playerId!, result.game);
+        const publicPlayer = toPublicPlayer(player!);
         if (result.isReconnection) {
-          this.io.to(result.game.id).emit('playerReconnected', player!);
+          this.io.to(result.game.id).emit('playerReconnected', publicPlayer);
         } else {
-          this.io.to(result.game.id).emit('playerJoined', player!);
+          this.io.to(result.game.id).emit('playerJoined', publicPlayer);
         }
       } else if (result.reason) {
         console.warn(`[JOIN_GAME] ${socket.id}: ${result.reason}`);
