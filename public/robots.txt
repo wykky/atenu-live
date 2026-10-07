@@ -27,8 +27,6 @@ Disallow: /api/
 # Explicit allow: AI search and citation bots (landing surfaces only)
 # ---------------------------------------------------------------------------
 
-User-agent: ClaudeBot
-Allow: /
 Allow: /join
 Disallow: /game/
 Disallow: /host
@@ -38,46 +36,57 @@ Disallow: /auth/
 Disallow: /api/
 
 User-agent: Claude-User
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
 Allow: /join
 
 User-agent: Claude-SearchBot
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
 Allow: /join
 
 User-agent: OAI-SearchBot
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
 Allow: /join
 
 User-agent: ChatGPT-User
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
 Allow: /join
 
 User-agent: PerplexityBot
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
 Allow: /join
 
 User-agent: Perplexity-User
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
 Allow: /join
 
 User-agent: Googlebot
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
 Allow: /join
 
 User-agent: Bingbot
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
 Allow: /join
 
 User-agent: DuckDuckBot
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
 Allow: /join
 
 User-agent: Applebot
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
 Allow: /join
 
 User-agent: YandexBot
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
 Allow: /join
 
@@ -93,6 +102,9 @@ User-agent: Google-Extended
 Disallow: /
 
 User-agent: Applebot-Extended
+Disallow: /
+
+User-agent: ClaudeBot
 Disallow: /
 
 User-agent: anthropic-ai
