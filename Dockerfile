@@ -12,6 +12,15 @@ RUN npm ci
 FROM deps AS builder
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# NEXT_PUBLIC_* are inlined into the client bundle at BUILD time, and .dockerignore keeps
+# .env.local out of the build context, so the public values must be supplied here.
+# Without them the host lobby shows "localhost:3000" and the QR code points there.
+ARG NEXT_PUBLIC_APP_URL=https://live.atenu.org
+ARG NEXT_PUBLIC_SHOW_RANDOM_NICKNAME=1
+ARG NEXT_PUBLIC_GAME_PIN_LENGTH=6
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
+    NEXT_PUBLIC_SHOW_RANDOM_NICKNAME=$NEXT_PUBLIC_SHOW_RANDOM_NICKNAME \
+    NEXT_PUBLIC_GAME_PIN_LENGTH=$NEXT_PUBLIC_GAME_PIN_LENGTH
 RUN npm run build && rm -rf .next/cache
 
 # ---- prod-deps: runtime node_modules only --------------------------------------------
