@@ -116,6 +116,13 @@ export class GameplayLoop {
     }
   }
 
+  /** Finish a game from any phase. In the lobby the loop is not running, and
+   *  transitionToPhase is a no-op there, so finish it directly. */
+  finishGame(game: Game): void {
+    if (game.gameLoopActive) this.transitionToPhase(game, 'finished');
+    else this.executeFinishedPhase(game);
+  }
+
   transitionToPhase(game: Game, phase: GamePhase): void {
     if (!game.gameLoopActive) {
       console.log(`[PIN ${game.pin}] Cannot transition - game loop not active`);

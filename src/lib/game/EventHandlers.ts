@@ -131,7 +131,7 @@ export class EventHandlers {
       });
       socket.on('endGame', (gameId, hostToken) => {
         this.handleHostEvent(socket, gameId, hostToken, 'endGame', (game) => {
-          this.gameplayLoop.transitionToPhase(game, 'finished');
+          this.gameplayLoop.finishGame(game);
         });
       });
       socket.on('downloadGameLogs', (gameId, hostToken) => {
