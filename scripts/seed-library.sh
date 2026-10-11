@@ -234,5 +234,13 @@ run_node \
   --think 8 --answer 10 \
   --description "Thirty questions on Asia: capitals and languages, the Caspian and Aral seas, taekwondo, the Taj Mahal, Nowruz and Bollywood, world records from the Burj Khalifa to Angkor Wat and the Great Wall, the Mongol Empire, Gandhi, Lee Kuan Yew and the first woman Prime Minister. Written in simple English for high-school students."
 
+run_node \
+  --tsv "$(tsv_path premier-league-trivia.tsv)" \
+  --slug premier-league-trivia \
+  --title "Premier League Trivia" \
+  --subject Sport --language en \
+  --think 8 --answer 10 \
+  --description "Thirty questions on the English Premier League: the first goal and the first season, the Invincibles and Derby's 11 points, Shearer, Giggs and Cech, the fastest goal and hat-trick, goalkeepers who scored, Leicester's 5000-1 title, Aguero's 93:20 and Solskjaer's four goals off the bench. Records are correct as of the end of the 2025-26 season. Written in simple English for high-school students."
+
 echo
 echo "✓ Library seeded. Visit https://live.atenu.org/library to verify."
