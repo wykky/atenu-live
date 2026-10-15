@@ -9,7 +9,8 @@ Inputs (this folder):
   montserrat-800.ttf Montserrat ExtraBold (OFL), for "QUIZ"
 
 Run from the repo root:  python3 scripts/pwa-icons/build.py
-Writes public/pwa/*.png, src/app/icon.png, src/app/apple-icon.png,
+Writes public/pwa/atn-quiz-*.png (rename them when the artwork changes,
+since browsers may cache icon URLs for a long time), src/app/icon.png, src/app/apple-icon.png,
 src/app/favicon.ico.
 """
 from pathlib import Path
@@ -64,10 +65,10 @@ def icon(size, *, scale, rounded, with_quiz=True):
 out = ROOT / "public" / "pwa"
 out.mkdir(parents=True, exist_ok=True)
 # "any": rounded black tile, mark fills it.
-icon(192, scale=0.74, rounded=True).save(out / "icon-192.png", optimize=True)
-icon(512, scale=0.74, rounded=True).save(out / "icon-512.png", optimize=True)
+icon(192, scale=0.74, rounded=True).save(out / "atn-quiz-192.png", optimize=True)
+icon(512, scale=0.74, rounded=True).save(out / "atn-quiz-512.png", optimize=True)
 # "maskable": full-bleed, mark inside the 80% safe-zone circle.
-icon(512, scale=0.56, rounded=False).save(out / "maskable-512.png", optimize=True)
+icon(512, scale=0.56, rounded=False).save(out / "atn-quiz-maskable-512.png", optimize=True)
 # Favicon PNG and apple-touch-icon (iOS rounds corners itself, so square).
 icon(192, scale=0.74, rounded=True).save(ROOT / "src/app/icon.png", optimize=True)
 icon(180, scale=0.74, rounded=False).convert("RGB").save(ROOT / "src/app/apple-icon.png", optimize=True)

@@ -32,9 +32,9 @@ export default function manifest(): MetadataRoute.Manifest {
     dir: 'ltr',
     prefer_related_applications: false,
     icons: [
-      { src: '/pwa/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/pwa/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: '/pwa/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: '/pwa/atn-quiz-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/pwa/atn-quiz-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/pwa/atn-quiz-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
     shortcuts: [
       {
@@ -42,21 +42,21 @@ export default function manifest(): MetadataRoute.Manifest {
         short_name: 'Join',
         description: 'Enter a game PIN',
         url: '/join?source=pwa-shortcut',
-        icons: [{ src: '/pwa/icon-192.png', sizes: '192x192', type: 'image/png' }],
+        icons: [{ src: '/pwa/atn-quiz-192.png', sizes: '192x192', type: 'image/png' }],
       },
       {
         name: 'Host a game',
         short_name: 'Host',
         description: 'Start a live quiz for your class',
         url: '/host?source=pwa-shortcut',
-        icons: [{ src: '/pwa/icon-192.png', sizes: '192x192', type: 'image/png' }],
+        icons: [{ src: '/pwa/atn-quiz-192.png', sizes: '192x192', type: 'image/png' }],
       },
       {
         name: 'Quiz library',
         short_name: 'Library',
         description: 'Ready-made quizzes by subject',
         url: '/library?source=pwa-shortcut',
-        icons: [{ src: '/pwa/icon-192.png', sizes: '192x192', type: 'image/png' }],
+        icons: [{ src: '/pwa/atn-quiz-192.png', sizes: '192x192', type: 'image/png' }],
       },
     ],
     screenshots: [

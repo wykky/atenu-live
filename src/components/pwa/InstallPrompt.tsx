@@ -45,7 +45,7 @@ export default function InstallPrompt({ variant, placement }: InstallPromptProps
     <div className={wrapper} role="region" aria-label="Install Atenu Live">
       <div className="relative flex items-start gap-3 rounded-2xl border-4 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/pwa/icon-192.png" alt="" width={48} height={48} className="h-12 w-12 shrink-0 rounded-xl" />
+        <img src="/pwa/atn-quiz-192.png" alt="" width={48} height={48} className="h-12 w-12 shrink-0 rounded-xl" />
         <div className="min-w-0 flex-1 pr-6 text-left">
           <p className="font-bold text-black">Get the Atenu Live app</p>
           {canInstall ? (

@@ -16,7 +16,7 @@
  * fresh.
  */
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL_CACHE = `al-shell-${VERSION}`;
 const STATIC_CACHE = `al-static-${VERSION}`;
 const MEDIA_CACHE = `al-media-${VERSION}`;
@@ -27,9 +27,9 @@ const OFFLINE_URL = '/offline';
 const SHELL_URLS = [
   OFFLINE_URL,
   '/manifest.webmanifest',
-  '/pwa/icon-192.png',
-  '/pwa/icon-512.png',
-  '/pwa/maskable-512.png',
+  '/pwa/atn-quiz-192.png',
+  '/pwa/atn-quiz-512.png',
+  '/pwa/atn-quiz-maskable-512.png',
 ];
 // Pages worth showing from cache when the network fails mid-navigation.
 // Game pages are excluded: a cached game screen without a socket is useless.
@@ -40,7 +40,9 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(SHELL_CACHE);
-      await cache.addAll(SHELL_URLS);
+      // cache: 'reload' skips the browser's HTTP cache, which may hold an
+      // older file at the same URL (the first icons were sent as immutable).
+      await cache.addAll(SHELL_URLS.map((u) => new Request(u, { cache: 'reload' })));
       // Also precache the CSS the offline page links to, so it renders styled.
       try {
         const res = await cache.match(OFFLINE_URL);
