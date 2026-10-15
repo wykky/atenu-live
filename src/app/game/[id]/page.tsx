@@ -18,6 +18,7 @@ import GameResultsPhaseScreen from '@/components/game-screens/GameResultsPhaseSc
 import GameFallbackScreen from '@/components/game-screens/GameFallbackScreen';
 import PlayerLeaderboardScreen from '@/components/game-screens/PlayerLeaderboardScreen';
 import { SkipForward, RotateCcw } from 'lucide-react';
+import { useWakeLock } from '@/lib/hooks/useWakeLock';
 
 /**
  * Small overlay buttons rendered on the host's thinking/answering screens.
@@ -282,6 +283,8 @@ export default function GamePage() {
   const isPlayer = searchParams?.get('player') === 'true';
 
   const [state, dispatch] = useReducer(gameReducer, initialState);
+  // Keep phones (and the host's projector laptop) awake until the podium.
+  useWakeLock(state.gameStatus !== 'finished');
   // Phase 8: client-side timestamp of when the current answering phase started (locally).
   // Used to report perceived time on submit for adaptive scoring.
   const answeringPhaseStartedAtRef = useRef<number | null>(null);

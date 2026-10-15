@@ -3,6 +3,7 @@ import { Galindo, Coiny, Noto_Sans_Ethiopic } from "next/font/google";
 import "./globals.css";
 import Script from "next/script";
 import SessionWrapper from "@/components/SessionWrapper";
+import PwaRoot from "@/components/pwa/PwaRoot";
 
 const galindo = Galindo({
   variable: "--font-title",
@@ -78,12 +79,22 @@ export const metadata: Metadata = {
   other: {
     'agent-hub': ATENU_AGENT_HUB,
   },
+  // iOS home-screen app: full-screen launch, yellow status bar area, short title.
+  appleWebApp: {
+    capable: true,
+    title: SITE_NAME,
+    statusBarStyle: 'default',
+  },
+  formatDetection: { telephone: false },
 };
 
 // PWA + mobile browser theme colour matches the brand yellow so the
 // address bar tint and Android task-switcher card stay on-brand.
 export const viewport: Viewport = {
   themeColor: '#FFC600',
+  // Lets content use the full screen on notched phones in standalone mode;
+  // install/update UI pads itself with env(safe-area-inset-*).
+  viewportFit: 'cover',
 };
 
 /**
@@ -182,6 +193,7 @@ export default function RootLayout({
         <SessionWrapper>
           {children}
         </SessionWrapper>
+        <PwaRoot />
       </body>
     </html>
   );
