@@ -8,7 +8,7 @@
  * No `orientation` lock: hosts run the game on landscape laptops and
  * projectors, and a portrait lock would rotate their screen.
  *
- * Icons come from src/app/pwa/[file]/route.tsx. Screenshots in
+ * Icons are static PNGs in public/pwa/ built by scripts/pwa-icons/build.py. Screenshots in
  * public/screenshots/ enable Chrome's richer install sheet.
  */
 

@@ -16,7 +16,7 @@
  * fresh.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `al-shell-${VERSION}`;
 const STATIC_CACHE = `al-static-${VERSION}`;
 const MEDIA_CACHE = `al-media-${VERSION}`;
