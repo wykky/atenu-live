@@ -1,45 +1,84 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { RefreshCw } from 'lucide-react';
-import { applyUpdate, initPwa, usePwa } from '@/lib/pwa';
-import InstallPrompt from './InstallPrompt';
+import { Download, RefreshCw, Share, SquarePlus, X } from 'lucide-react';
+import { applyUpdate, dismissInstall, initPwa, isInstallDismissed, promptInstall, track, usePwa } from '@/lib/pwa';
 
-// Pages where a floating install banner is welcome. Never on /join (students
-// are typing a PIN against the clock) or in a game (the podium shows an
-// inline prompt instead).
-const BANNER_PATHS = new Set(['/', '/library', '/how-it-works']);
-
-/** Mounted once in the root layout: registers the SW, shows update + install UI. */
+/**
+ * Mounted once in the root layout. Registers the service worker everywhere,
+ * but the only visible PWA UI is one small round icon, bottom-right of the
+ * front page:
+ *   - new version waiting  -> refresh icon, tap reloads into it
+ *   - installable (Chrome) -> download icon, tap opens the native prompt
+ *   - iPhone Safari        -> download icon, tap shows Add-to-Home-Screen steps
+ * Nothing shows on any other page, so games and the PIN screen stay clean.
+ */
 export default function PwaRoot() {
   const pathname = usePathname() ?? '/';
-  const { updateReady } = usePwa();
+  const { updateReady, canInstall, isIosSafari, isStandalone } = usePwa();
+  const [dismissed, setDismissed] = useState(true);
+  const [iosHelpOpen, setIosHelpOpen] = useState(false);
 
   useEffect(() => initPwa(), []);
+  // Read localStorage after mount so server and first client render match.
+  useEffect(() => setDismissed(isInstallDismissed()), []);
 
-  // Never reload someone mid-game or mid-lobby; they get the update next page.
-  const inGame = pathname.startsWith('/game') || pathname.startsWith('/host');
-  const showUpdate = updateReady && !inGame;
+  const installable = !isStandalone && !dismissed && (canInstall || isIosSafari);
+  const mode = updateReady ? 'update' : installable ? 'install' : null;
+
+  useEffect(() => {
+    if (pathname === '/' && mode === 'install') {
+      track('pwa_install_shown', { placement: 'home-icon', kind: canInstall ? 'native' : 'ios' });
+    }
+  }, [pathname, mode, canInstall]);
+
+  if (pathname !== '/' || !mode) return null;
+
+  const onClick = () => {
+    if (mode === 'update') return applyUpdate();
+    if (canInstall) return promptInstall('home-icon');
+    setIosHelpOpen((open) => !open);
+  };
+
+  const label = mode === 'update' ? 'Update Atenu Live' : 'Install the Atenu Live app';
+  const Icon = mode === 'update' ? RefreshCw : Download;
 
   return (
-    <>
-      {showUpdate && (
-        <div className="fixed inset-x-3 top-3 z-[60] mx-auto max-w-md pt-[env(safe-area-inset-top)]" role="status">
-          <div className="flex items-center justify-between gap-3 rounded-xl border-2 border-black bg-black px-4 py-3 text-white shadow-[4px_4px_0_0_#FFC600]">
-            <span className="text-sm font-semibold">A new version of Atenu Live is ready.</span>
-            <button
-              type="button"
-              onClick={applyUpdate}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-yellow-400 px-3 py-1.5 text-sm font-bold text-black hover:bg-yellow-300 cursor-pointer"
-            >
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
-              Update
-            </button>
-          </div>
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 pb-[env(safe-area-inset-bottom)]">
+      {iosHelpOpen && (
+        <div className="relative w-64 rounded-xl border-2 border-black bg-white p-3 pr-8 text-sm text-gray-800 shadow-[3px_3px_0_0_#000]" role="dialog" aria-label="Add to Home Screen">
+          Tap <Share className="inline h-4 w-4 align-text-bottom" aria-label="Share" /> below, then{' '}
+          <span className="whitespace-nowrap font-semibold">
+            <SquarePlus className="inline h-4 w-4 align-text-bottom" aria-hidden="true" /> Add to Home Screen
+          </span>
+          .
+          <button
+            type="button"
+            onClick={() => {
+              dismissInstall('home-icon');
+              setDismissed(true);
+              setIosHelpOpen(false);
+            }}
+            aria-label="Not now"
+            className="absolute right-1.5 top-1.5 rounded-full p-1 text-gray-500 hover:bg-gray-100 hover:text-black cursor-pointer"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
       )}
-      {BANNER_PATHS.has(pathname) && <InstallPrompt variant="banner" placement={`banner:${pathname}`} />}
-    </>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        title={label}
+        className="relative flex h-11 w-11 items-center justify-center rounded-full border-2 border-black bg-yellow-400 text-black shadow-[2px_2px_0_0_#000] hover:bg-black hover:text-yellow-400 cursor-pointer"
+      >
+        <Icon className="h-5 w-5" aria-hidden="true" />
+        {mode === 'update' && (
+          <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-red-600" aria-hidden="true" />
+        )}
+      </button>
+    </div>
   );
 }

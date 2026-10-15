@@ -5,7 +5,6 @@ import { LogOut, Download, Share2, Check } from 'lucide-react';
 import PageLayout from '@/components/PageLayout';
 import Leaderboard from '@/components/Leaderboard';
 import type { Player } from '@/types/game';
-import InstallPrompt from '@/components/pwa/InstallPrompt';
 
 interface GameFinalResultsScreenProps {
   finalScores: Player[];
@@ -86,12 +85,6 @@ export default function GameFinalResultsScreen({
             compact
           />
         </div>
-        {/* Best moment to offer the app: the game just ended on a high. */}
-        {!isHost && (
-          <div className="mt-3 shrink-0">
-            <InstallPrompt variant="inline" placement="podium" />
-          </div>
-        )}
       </div>
     </PageLayout>
   );

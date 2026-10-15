@@ -116,9 +116,3 @@ body {
   font-weight: 400;
   font-style: normal;
 }
-
-/* PWA install banner entrance (src/components/pwa/InstallPrompt.tsx). */
-@keyframes al-slide-up {
-  from { transform: translateY(120%); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
