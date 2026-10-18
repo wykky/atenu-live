@@ -242,5 +242,13 @@ run_node \
   --think 8 --answer 10 \
   --description "Thirty questions on the English Premier League: the first goal and the first season, the Invincibles and Derby's 11 points, Shearer, Giggs and Cech, the fastest goal and hat-trick, goalkeepers who scored, Leicester's 5000-1 title, Aguero's 93:20 and Solskjaer's four goals off the bench. Records are correct as of the end of the 2025-26 season. Written in simple English for high-school students."
 
+run_node \
+  --tsv "$(tsv_path afar-region.tsv)" \
+  --slug afar-region \
+  --title "The Afar Region" \
+  --subject Geography --language en \
+  --think 8 --answer 10 \
+  --description "Thirty questions on Ethiopia's Afar Region: Semera and Asayita, Erta Ale and Dallol, the Danakil Depression and Lake Asale, the Awash River and Tendaho, Lucy and Ardi, the Afar Triangle, the salt caravans, the Afar language, Dagu and the Sultanate of Aussa. Written in simple English for high-school students."
+
 echo
 echo "✓ Library seeded. Visit https://live.atenu.org/library to verify."
