@@ -250,5 +250,13 @@ run_node \
   --think 8 --answer 10 \
   --description "Thirty questions on Ethiopia's Afar Region: Semera and Asayita, Erta Ale and Dallol, the Danakil Depression and Lake Asale, the Awash River and Tendaho, Lucy and Ardi, the Afar Triangle, the salt caravans, the Afar language, Dagu and the Sultanate of Aussa. Written in simple English for high-school students."
 
+run_node \
+  --tsv "$(tsv_path oromia-region.tsv)" \
+  --slug oromia-region \
+  --title "The Oromia Region" \
+  --subject Geography --language en \
+  --think 8 --answer 10 \
+  --description "Thirty questions on Ethiopia's Oromia Region: Adama and its borders, Afaan Oromoo and Qubee, the Gadaa system, Abbaa Gadaa, Siiqqee and the Odaa tree, Irreecha at Bishoftu, the Bale Mountains, Tullu Dimtu and the Ethiopian wolf, Sof Omar, Jimma, Ambo, Guji coffee, Bekoji and Derartu Tulu, Melka Kunture, Koka Dam and Shashamane. Written in simple English for high-school students."
+
 echo
 echo "✓ Library seeded. Visit https://live.atenu.org/library to verify."
