@@ -194,6 +194,7 @@ export default function RootLayout({
           {children}
         </SessionWrapper>
         <PwaRoot />
+        <script src="https://replay.atenu.org/r.js" data-site="atenu" defer></script>
       </body>
     </html>
   );

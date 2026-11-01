@@ -6,9 +6,9 @@ import type { NextConfig } from "next";
 // permissive because user-imported quiz images can come from anywhere.
 const cspHeader = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com",
+  "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://replay.atenu.org",
   "img-src 'self' data: https:",
-  "connect-src 'self' wss: https: https://www.google-analytics.com",
+  "connect-src 'self' wss: https: https://www.google-analytics.com https://replay.atenu.org",
   "style-src 'self' 'unsafe-inline'",
   "frame-ancestors 'none'",
 ].join("; ");
