@@ -258,5 +258,13 @@ run_node \
   --think 8 --answer 10 \
   --description "Thirty questions on Ethiopia's Oromia Region: Adama and its borders, Afaan Oromoo and Qubee, the Gadaa system, Abbaa Gadaa, Siiqqee and the Odaa tree, Irreecha at Bishoftu, the Bale Mountains, Tullu Dimtu and the Ethiopian wolf, Sof Omar, Jimma, Ambo, Guji coffee, Bekoji and Derartu Tulu, Melka Kunture, Koka Dam and Shashamane. Written in simple English for high-school students."
 
+run_node \
+  --tsv "$(tsv_path gambela-region.tsv)" \
+  --slug gambela-region \
+  --title "The Gambela Region" \
+  --subject Geography --language en \
+  --think 8 --answer 10 \
+  --description "Thirty questions on Ethiopia's Gambela Region: the town of Gambela and the South Sudan border, the Baro, Akobo and Sobat rivers, Menelik's trading post and the Baro steamers, the Nuer, Anuak, Majang, Opo and Komo peoples, the white-eared kob migration, the shoebill and Nile lechwe, and the Majang Forest Biosphere Reserve. Written in simple English for high-school students."
+
 echo
 echo "✓ Library seeded. Visit https://live.atenu.org/library to verify."
