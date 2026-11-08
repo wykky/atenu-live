@@ -266,5 +266,13 @@ run_node \
   --think 8 --answer 10 \
   --description "Thirty questions on Ethiopia's Gambela Region: the town of Gambela and the South Sudan border, the Baro, Akobo and Sobat rivers, Menelik's trading post and the Baro steamers, the Nuer, Anuak, Majang, Opo and Komo peoples, the white-eared kob migration, the shoebill and Nile lechwe, and the Majang Forest Biosphere Reserve. Written in simple English for high-school students."
 
+run_node \
+  --tsv "$(tsv_path somali-region.tsv)" \
+  --slug somali-region \
+  --title "The Somali Region" \
+  --subject Geography --language en \
+  --think 8 --answer 10 \
+  --description "Thirty questions on Ethiopia's Somali Region: Jijiga and the Fafan Zone, Gode and Kebri Dahar, the Somali language and the Cushitic branch, the Wabi Shebelle and the Juba headwaters, the Ogaden and the Calub gas field, herders, camels and the aqal hut, the gerenuk and beisa oryx, the Dolo Ado camps and Somali oral poetry. Written in simple English for high-school students."
+
 echo
 echo "✓ Library seeded. Visit https://live.atenu.org/library to verify."
